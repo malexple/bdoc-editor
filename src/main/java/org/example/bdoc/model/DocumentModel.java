@@ -16,8 +16,10 @@ public class DocumentModel {
 
     @XmlAttribute
     private String id;
+
     @XmlAttribute
     private String title;
+
     @XmlAttribute
     private DocumentType documentType;
 
@@ -38,12 +40,31 @@ public class DocumentModel {
         this.documentType = documentType;
     }
 
-    public String getId() { return id; }
-    public String getTitle() { return title; }
-    public DocumentType getDocumentType() { return documentType; }
-    public List<PageModel> getPages() { return pages; }
-    public List<StoryModel> getStories() { return stories; }
+    public String getId() {
+        return id;
+    }
 
-    public void addPage(PageModel page) { pages.add(page); }
-    public void addStory(StoryModel story) { stories.add(story); }
+    public String getTitle() {
+        return title;
+    }
+
+    public DocumentType getDocumentType() {
+        return documentType;
+    }
+
+    public List<PageModel> getPages() {
+        return pages;
+    }
+
+    public List<StoryModel> getStories() {
+        return stories;
+    }
+
+    public void addPage(PageModel page) {
+        pages.add(page);
+    }
+
+    public void addStory(StoryModel story) {
+        stories.add(story);
+    }
 }

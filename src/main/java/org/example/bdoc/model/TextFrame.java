@@ -10,32 +10,17 @@ import jakarta.xml.bind.annotation.XmlRootElement;
 public class TextFrame extends BdocObject {
 
     @XmlAttribute
-    private String storyId;
-    @XmlAttribute
-    private double x;
-    @XmlAttribute
-    private double y;
-    @XmlAttribute
-    private double width;
-    @XmlAttribute
-    private double height;
+    private String storyRef;
 
     public TextFrame() {
     }
 
-    public TextFrame(String id, String layerId, String storyId,
-                     double x, double y, double width, double height) {
-        super(id, layerId);
-        this.storyId = storyId;
-        this.x = x;
-        this.y = y;
-        this.width = width;
-        this.height = height;
+    public TextFrame(String id, String layerRef, String storyRef, Geometry geometry) {
+        super(id, layerRef, geometry);
+        this.storyRef = storyRef;
     }
 
-    public String getStoryId() { return storyId; }
-    public double getX() { return x; }
-    public double getY() { return y; }
-    public double getWidth() { return width; }
-    public double getHeight() { return height; }
+    public String getStoryRef() {
+        return storyRef;
+    }
 }

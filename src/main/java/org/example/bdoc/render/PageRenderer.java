@@ -6,6 +6,7 @@ import javafx.scene.text.Font;
 import javafx.scene.text.TextAlignment;
 import org.example.bdoc.model.BdocObject;
 import org.example.bdoc.model.DocumentModel;
+import org.example.bdoc.model.Geometry;
 import org.example.bdoc.model.LayerModel;
 import org.example.bdoc.model.PageModel;
 import org.example.bdoc.model.ShapeType;
@@ -32,10 +33,10 @@ public class PageRenderer {
 
         page.getObjects().stream()
                 .filter(object -> {
-                    LayerModel layer = layers.get(object.getLayerId());
+                    LayerModel layer = layers.get(object.getLayerRef());
                     return layer != null && layer.isVisible();
                 })
-                .sorted(Comparator.comparingInt(o -> layers.get(o.getLayerId()).getZIndex()))
+                .sorted(Comparator.comparingInt(o -> layers.get(o.getLayerRef()).getZIndex()))
                 .forEach(object -> renderObject(gc, object, stories));
     }
 
@@ -43,35 +44,40 @@ public class PageRenderer {
         if (object instanceof VectorShape shape) {
             renderShape(gc, shape);
         } else if (object instanceof TextFrame textFrame) {
-            renderTextFrame(gc, textFrame, stories.get(textFrame.getStoryId()));
+            renderTextFrame(gc, textFrame, stories.get(textFrame.getStoryRef()));
         }
     }
 
     private void renderShape(GraphicsContext gc, VectorShape shape) {
+        Geometry g = shape.getGeometry();
         gc.setStroke(Color.web("#2F4858"));
         gc.setLineWidth(2.0);
 
         if (shape.getShapeType() == ShapeType.RECTANGLE) {
-            gc.strokeRect(shape.getX(), shape.getY(), shape.getWidth(), shape.getHeight());
+            gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight());
         } else if (shape.getShapeType() == ShapeType.ROUNDED_RECTANGLE) {
-            gc.strokeRoundRect(shape.getX(), shape.getY(), shape.getWidth(), shape.getHeight(),
-                    shape.getArcWidth(), shape.getArcHeight());
+            gc.strokeRoundRect(
+                    g.getX(), g.getY(), g.getWidth(), g.getHeight(),
+                    g.getArcWidth() != null ? g.getArcWidth() : 0,
+                    g.getArcHeight() != null ? g.getArcHeight() : 0
+            );
         } else if (shape.getShapeType() == ShapeType.LINE) {
-            gc.strokeLine(shape.getX(), shape.getY(),
-                    shape.getX() + shape.getWidth(), shape.getY() + shape.getHeight());
+            gc.strokeLine(g.getX(), g.getY(), g.getX() + g.getWidth(), g.getY() + g.getHeight());
         }
     }
 
     private void renderTextFrame(GraphicsContext gc, TextFrame textFrame, StoryModel story) {
+        Geometry g = textFrame.getGeometry();
+
         gc.setStroke(Color.web("#94A3B8"));
         gc.setLineWidth(1.0);
-        gc.strokeRect(textFrame.getX(), textFrame.getY(), textFrame.getWidth(), textFrame.getHeight());
+        gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight());
 
         gc.setFill(Color.web("#0F172A"));
         gc.setFont(Font.font("Serif", 20));
         gc.setTextAlign(TextAlignment.LEFT);
 
-        String text = story != null ? story.getText() : "<missing story>";
-        gc.fillText(text, textFrame.getX() + 12, textFrame.getY() + 32, textFrame.getWidth() - 24);
+        String text = story != null ? story.getJoinedText() : "<missing story>";
+        gc.fillText(text, g.getX() + 12, g.getY() + 32, g.getWidth() - 24);
     }
 }
