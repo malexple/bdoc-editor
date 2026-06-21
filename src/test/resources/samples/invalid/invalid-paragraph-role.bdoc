@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document xmlns="urn:bdoc:v0.1" id="doc-bad-2" title="Invalid Paragraph Role" documentType="book">
+    <pages>
+        <page id="page-1" index="1" width="595.0" height="842.0">
+            <layers>
+                <layer id="layer-text" name="Text" role="text" visible="true" zIndex="1"/>
+            </layers>
+            <objects>
+                <textFrame id="text-1" layerRef="layer-text" storyRef="story-1">
+                    <geometry x="70.0" y="150.0" width="455.0" height="180.0"/>
+                </textFrame>
+            </objects>
+        </page>
+    </pages>
+    <stories>
+        <story id="story-1">
+            <paragraph role="invalid-role">Такой роли быть не должно.</paragraph>
+        </story>
+    </stories>
+</document>
