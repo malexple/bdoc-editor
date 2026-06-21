@@ -4,16 +4,13 @@ import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
-import javafx.scene.control.ListView;
-import javafx.scene.control.SplitPane;
-import javafx.scene.control.ToolBar;
+import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+import org.example.bdoc.io.BdocValidationException;
 import org.example.bdoc.io.BdocXmlSerializer;
 import org.example.bdoc.model.DocumentModel;
 import org.example.bdoc.model.PageModel;
@@ -68,15 +65,21 @@ public class BdocEditorApp extends Application {
         openBtn.setOnAction(e -> {
             FileChooser fc = new FileChooser();
             fc.setTitle("Open BDoc file");
-            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("BDoc files", "*.bdoc"));
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("BDoc files", "*.bdoc", "*.xml"));
             File file = fc.showOpenDialog(stage);
             if (file != null) {
-                document = serializer.load(file);
-                refreshTree();
-                PageModel page = document.getPages().get(0);
-                canvas.setWidth(page.getWidth());
-                canvas.setHeight(page.getHeight());
-                renderPage(page);
+                try {
+                    document = serializer.load(file);
+                    refreshTree();
+                    PageModel page = document.getPages().get(0);
+                    canvas.setWidth(page.getWidth());
+                    canvas.setHeight(page.getHeight());
+                    renderPage(page);
+                } catch (BdocValidationException ex) {
+                    showError("XSD validation error", ex.getMessage());
+                } catch (Exception ex) {
+                    showError("Open error", ex.getMessage());
+                }
             }
         });
 
@@ -110,5 +113,13 @@ public class BdocEditorApp extends Application {
 
     public static void main(String[] args) {
         launch(args);
+    }
+
+    private void showError(String title, String message) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle(title);
+        alert.setHeaderText(title);
+        alert.setContentText(message);
+        alert.showAndWait();
     }
 }

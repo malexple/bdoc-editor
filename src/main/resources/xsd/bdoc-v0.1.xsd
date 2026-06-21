@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema
+        xmlns:xs="http://www.w3.org/2001/XMLSchema"
+        targetNamespace="urn:bdoc:v0.1"
+        xmlns="urn:bdoc:v0.1"
+        elementFormDefault="qualified"
+        attributeFormDefault="unqualified">
+
+    <xs:simpleType name="DocumentType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="book"/>
+            <xs:enumeration value="journal"/>
+            <xs:enumeration value="article"/>
+            <xs:enumeration value="manuscript"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="LayerRole">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="background"/>
+            <xs:enumeration value="decoration"/>
+            <xs:enumeration value="text"/>
+            <xs:enumeration value="image"/>
+            <xs:enumeration value="header-footer"/>
+            <xs:enumeration value="annotation"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="ShapeType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="rectangle"/>
+            <xs:enumeration value="rounded-rectangle"/>
+            <xs:enumeration value="line"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="ParagraphRole">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="title"/>
+            <xs:enumeration value="subtitle"/>
+            <xs:enumeration value="heading"/>
+            <xs:enumeration value="body"/>
+            <xs:enumeration value="caption"/>
+            <xs:enumeration value="quote"/>
+            <xs:enumeration value="footnote"/>
+            <xs:enumeration value="header"/>
+            <xs:enumeration value="footer"/>
+            <xs:enumeration value="page-number"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:complexType name="GeometryType">
+        <xs:attribute name="x" type="xs:decimal" use="required"/>
+        <xs:attribute name="y" type="xs:decimal" use="required"/>
+        <xs:attribute name="width" type="xs:decimal" use="required"/>
+        <xs:attribute name="height" type="xs:decimal" use="required"/>
+        <xs:attribute name="arcWidth" type="xs:decimal" use="optional"/>
+        <xs:attribute name="arcHeight" type="xs:decimal" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="LayerType">
+        <xs:attribute name="id" type="xs:ID" use="required"/>
+        <xs:attribute name="name" type="xs:string" use="required"/>
+        <xs:attribute name="role" type="LayerRole" use="required"/>
+        <xs:attribute name="visible" type="xs:boolean" use="required"/>
+        <xs:attribute name="zIndex" type="xs:int" use="required"/>
+    </xs:complexType>
+
+    <xs:complexType name="ParagraphType">
+        <xs:simpleContent>
+            <xs:extension base="xs:string">
+                <xs:attribute name="role" type="ParagraphRole" use="required"/>
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+
+    <xs:complexType name="StoryType">
+        <xs:sequence>
+            <xs:element name="paragraph" type="ParagraphType" minOccurs="1" maxOccurs="unbounded"/>
+        </xs:sequence>
+        <xs:attribute name="id" type="xs:ID" use="required"/>
+    </xs:complexType>
+
+    <xs:complexType name="VectorShapeType">
+        <xs:sequence>
+            <xs:element name="geometry" type="GeometryType"/>
+        </xs:sequence>
+        <xs:attribute name="id" type="xs:ID" use="required"/>
+        <xs:attribute name="layerRef" type="xs:IDREF" use="required"/>
+        <xs:attribute name="type" type="ShapeType" use="required"/>
+    </xs:complexType>
+
+    <xs:complexType name="TextFrameType">
+        <xs:sequence>
+            <xs:element name="geometry" type="GeometryType"/>
+        </xs:sequence>
+        <xs:attribute name="id" type="xs:ID" use="required"/>
+        <xs:attribute name="layerRef" type="xs:IDREF" use="required"/>
+        <xs:attribute name="storyRef" type="xs:IDREF" use="required"/>
+    </xs:complexType>
+
+    <xs:complexType name="ObjectsType">
+        <xs:choice minOccurs="0" maxOccurs="unbounded">
+            <xs:element name="vectorShape" type="VectorShapeType"/>
+            <xs:element name="textFrame" type="TextFrameType"/>
+        </xs:choice>
+    </xs:complexType>
+
+    <xs:complexType name="LayersType">
+        <xs:sequence>
+            <xs:element name="layer" type="LayerType" minOccurs="1" maxOccurs="unbounded"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="PageType">
+        <xs:sequence>
+            <xs:element name="layers" type="LayersType"/>
+            <xs:element name="objects" type="ObjectsType"/>
+        </xs:sequence>
+        <xs:attribute name="id" type="xs:ID" use="required"/>
+        <xs:attribute name="index" type="xs:positiveInteger" use="required"/>
+        <xs:attribute name="width" type="xs:decimal" use="required"/>
+        <xs:attribute name="height" type="xs:decimal" use="required"/>
+    </xs:complexType>
+
+    <xs:complexType name="PagesType">
+        <xs:sequence>
+            <xs:element name="page" type="PageType" minOccurs="1" maxOccurs="unbounded"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="StoriesType">
+        <xs:sequence>
+            <xs:element name="story" type="StoryType" minOccurs="1" maxOccurs="unbounded"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="DocumentTypeRoot">
+        <xs:sequence>
+            <xs:element name="pages" type="PagesType"/>
+            <xs:element name="stories" type="StoriesType"/>
+        </xs:sequence>
+        <xs:attribute name="id" type="xs:ID" use="required"/>
+        <xs:attribute name="title" type="xs:string" use="required"/>
+        <xs:attribute name="documentType" type="DocumentType" use="required"/>
+    </xs:complexType>
+
+    <xs:element name="document" type="DocumentTypeRoot"/>
+
+</xs:schema>
