@@ -1,51 +1,51 @@
-package org.example.bdoc.render;
+package org.example.bdoc.io;
 
-import javafx.application.Platform;
-import javafx.embed.swing.JFXPanel;
-import javafx.scene.canvas.Canvas;
-import javafx.scene.image.WritableImage;
 import org.example.bdoc.model.DocumentModel;
-import org.example.bdoc.model.PageModel;
 import org.example.bdoc.model.SampleDocuments;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicReference;
+import java.io.File;
+import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.*;
 
-class PageRendererTest {
+class BdocXmlSerializerTest {
 
-    @BeforeAll
-    static void initToolkit() {
-        new JFXPanel(); // инициализирует FX toolkit и запускает FX thread
+    private final BdocXmlSerializer serializer = new BdocXmlSerializer();
+
+    @Test
+    void xmlRoundtripPreservesDocumentStructure(@TempDir Path tempDir) {
+        DocumentModel original = SampleDocuments.sample();
+        File file = tempDir.resolve("test.bdoc").toFile();
+
+        serializer.save(original, file);
+        DocumentModel loaded = serializer.load(file);
+
+        assertEquals(original.getId(), loaded.getId());
+        assertEquals(original.getTitle(), loaded.getTitle());
+        assertEquals(original.getDocumentType(), loaded.getDocumentType());
+        assertEquals(original.getPages().size(), loaded.getPages().size());
+        assertEquals(original.getStories().size(), loaded.getStories().size());
+
+        var originalPage = original.getPages().get(0);
+        var loadedPage = loaded.getPages().get(0);
+        assertEquals(originalPage.getWidth(), loadedPage.getWidth());
+        assertEquals(originalPage.getHeight(), loadedPage.getHeight());
+        assertEquals(originalPage.getLayers().size(), loadedPage.getLayers().size());
+        assertEquals(originalPage.getObjects().size(), loadedPage.getObjects().size());
+
+        assertEquals(original.getStories().get(0).getText(), loaded.getStories().get(0).getText());
     }
 
     @Test
-    void rendersSamplePageToImage() throws InterruptedException {
+    void xmlContainsExpectedElements() {
         DocumentModel document = SampleDocuments.sample();
-        PageModel page = document.getPages().get(0);
+        String xml = serializer.toXml(document);
 
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicReference<WritableImage> imageRef = new AtomicReference<>();
-
-        Platform.runLater(() -> {
-            try {
-                Canvas canvas = new Canvas(page.getWidth(), page.getHeight());
-                new PageRenderer().render(canvas.getGraphicsContext2D(), document, page);
-                imageRef.set(canvas.snapshot(null, null));
-            } finally {
-                latch.countDown();
-            }
-        });
-
-        latch.await(); // ждём пока FX thread завершит работу
-
-        WritableImage image = imageRef.get();
-        assertNotNull(image);
-        assertEquals((int) page.getWidth(), (int) image.getWidth());
-        assertEquals((int) page.getHeight(), (int) image.getHeight());
+        assertTrue(xml.contains("BDoc Demo"));
+        assertTrue(xml.contains("story-1"));
+        assertTrue(xml.contains("ROUNDED_RECTANGLE"));
+        assertTrue(xml.contains("textFrame"));
     }
 }

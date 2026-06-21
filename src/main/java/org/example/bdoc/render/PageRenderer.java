@@ -32,10 +32,10 @@ public class PageRenderer {
 
         page.getObjects().stream()
                 .filter(object -> {
-                    LayerModel layer = layers.get(object.layerId());
+                    LayerModel layer = layers.get(object.getLayerId());
                     return layer != null && layer.isVisible();
                 })
-                .sorted(Comparator.comparingInt(o -> layers.get(o.layerId()).getZIndex()))
+                .sorted(Comparator.comparingInt(o -> layers.get(o.getLayerId()).getZIndex()))
                 .forEach(object -> renderObject(gc, object, stories));
     }
 
@@ -43,7 +43,7 @@ public class PageRenderer {
         if (object instanceof VectorShape shape) {
             renderShape(gc, shape);
         } else if (object instanceof TextFrame textFrame) {
-            renderTextFrame(gc, textFrame, stories.get(textFrame.storyId()));
+            renderTextFrame(gc, textFrame, stories.get(textFrame.getStoryId()));
         }
     }
 
@@ -51,25 +51,27 @@ public class PageRenderer {
         gc.setStroke(Color.web("#2F4858"));
         gc.setLineWidth(2.0);
 
-        if (shape.shapeType() == ShapeType.RECTANGLE) {
-            gc.strokeRect(shape.x(), shape.y(), shape.width(), shape.height());
-        } else if (shape.shapeType() == ShapeType.ROUNDED_RECTANGLE) {
-            gc.strokeRoundRect(shape.x(), shape.y(), shape.width(), shape.height(), shape.arcWidth(), shape.arcHeight());
-        } else if (shape.shapeType() == ShapeType.LINE) {
-            gc.strokeLine(shape.x(), shape.y(), shape.x() + shape.width(), shape.y() + shape.height());
+        if (shape.getShapeType() == ShapeType.RECTANGLE) {
+            gc.strokeRect(shape.getX(), shape.getY(), shape.getWidth(), shape.getHeight());
+        } else if (shape.getShapeType() == ShapeType.ROUNDED_RECTANGLE) {
+            gc.strokeRoundRect(shape.getX(), shape.getY(), shape.getWidth(), shape.getHeight(),
+                    shape.getArcWidth(), shape.getArcHeight());
+        } else if (shape.getShapeType() == ShapeType.LINE) {
+            gc.strokeLine(shape.getX(), shape.getY(),
+                    shape.getX() + shape.getWidth(), shape.getY() + shape.getHeight());
         }
     }
 
     private void renderTextFrame(GraphicsContext gc, TextFrame textFrame, StoryModel story) {
         gc.setStroke(Color.web("#94A3B8"));
         gc.setLineWidth(1.0);
-        gc.strokeRect(textFrame.x(), textFrame.y(), textFrame.width(), textFrame.height());
+        gc.strokeRect(textFrame.getX(), textFrame.getY(), textFrame.getWidth(), textFrame.getHeight());
 
         gc.setFill(Color.web("#0F172A"));
         gc.setFont(Font.font("Serif", 20));
         gc.setTextAlign(TextAlignment.LEFT);
 
         String text = story != null ? story.getText() : "<missing story>";
-        gc.fillText(text, textFrame.x() + 12, textFrame.y() + 32, textFrame.width() - 24);
+        gc.fillText(text, textFrame.getX() + 12, textFrame.getY() + 32, textFrame.getWidth() - 24);
     }
 }
