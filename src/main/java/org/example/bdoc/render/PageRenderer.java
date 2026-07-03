@@ -64,26 +64,37 @@ public class PageRenderer {
             gc.setStroke(Color.web("#2563EB")); // Яркий синий цвет выделения Adobe InDesign
             gc.setLineWidth(2.0);
             Geometry g = object.getGeometry();
-            // Рисуем габаритную рамку выделения
-            gc.strokeRect(g.getX() - 1, g.getY() - 1, g.getWidth() + 2, g.getHeight() + 2);
+            // Если мы просто выделили объект стрелкой — рисуем синий контур InDesign
+            if (object.getType().equals("VectorShape") || object.getType().equals("ImageFrame")) {
+                gc.setStroke(Color.web("#2563EB"));
+                gc.setLineWidth(2.0);
+                gc.strokeRect(g.getX() - 1, g.getY() - 1, g.getWidth() + 2, g.getHeight() + 2);
+                // Рисуем габаритную рамку выделения
+//            gc.strokeRect(g.getX() - 1, g.getY() - 1, g.getWidth() + 2, g.getHeight() + 2);
 
-            // Рисуем маленькие белые квадратики-маркеры по углам фрейма
-            gc.setFill(Color.WHITE);
-            gc.setStroke(Color.web("#2563EB"));
-            gc.setLineWidth(1.0);
+                // Рисуем маленькие белые квадратики-маркеры по углам фрейма
+                gc.setFill(Color.WHITE);
+                gc.setStroke(Color.web("#2563EB"));
+                gc.setLineWidth(1.0);
 
-            double size = 6.0;
-            gc.fillRect(g.getX() - size/2, g.getY() - size/2, size, size);
-            gc.strokeRect(g.getX() - size/2, g.getY() - size/2, size, size);
+                double size = 6.0;
+                gc.fillRect(g.getX() - size / 2, g.getY() - size / 2, size, size);
+                gc.strokeRect(g.getX() - size / 2, g.getY() - size / 2, size, size);
 
-            gc.fillRect(g.getX() + g.getWidth() - size/2, g.getY() - size/2, size, size);
-            gc.strokeRect(g.getX() + g.getWidth() - size/2, g.getY() - size/2, size, size);
+                gc.fillRect(g.getX() + g.getWidth() - size / 2, g.getY() - size / 2, size, size);
+                gc.strokeRect(g.getX() + g.getWidth() - size / 2, g.getY() - size / 2, size, size);
 
-            gc.fillRect(g.getX() - size/2, g.getY() + g.getHeight() - size/2, size, size);
-            gc.strokeRect(g.getX() - size/2, g.getY() + g.getHeight() - size/2, size, size);
+                gc.fillRect(g.getX() - size / 2, g.getY() + g.getHeight() - size / 2, size, size);
+                gc.strokeRect(g.getX() - size / 2, g.getY() + g.getHeight() - size / 2, size, size);
 
-            gc.fillRect(g.getX() + g.getWidth() - size/2, g.getY() + g.getHeight() - size/2, size, size);
-            gc.strokeRect(g.getX() + g.getWidth() - size/2, g.getY() + g.getHeight() - size/2, size, size);
+                gc.fillRect(g.getX() + g.getWidth() - size / 2, g.getY() + g.getHeight() - size / 2, size, size);
+                gc.strokeRect(g.getX() + g.getWidth() - size / 2, g.getY() + g.getHeight() - size / 2, size, size);
+            } else if (object instanceof TextFrame) {
+                // Мы можем сделать рамку зеленой/фиолетовой при редактировании текста
+                gc.setStroke(Color.web("#10B981")); // Изумрудно-зеленый DTP цвет текстового фокуса
+                gc.setLineWidth(2.0);
+                gc.strokeRect(g.getX() - 1, g.getY() - 1, g.getWidth() + 2, g.getHeight() + 2);
+            }
         }
     }
 

@@ -47,6 +47,7 @@ public class BdocEditorApp extends Application {
     private VBox propertiesContainer;
     private Slider opacitySlider;
     private CheckBox visibleCheckBox;
+    private TextArea storyTextArea;
 
 
     @Override
@@ -112,35 +113,51 @@ public class BdocEditorApp extends Application {
             try {
                 PageModel page = document.loadPage(currentPageIndex);
 
-                if (currentTool == DtpTool.SELECTION) {
-                    // Логика выделения объектов (черная стрелка)
-                    BdocObject found = null;
-                    List<BdocObject> objects = page.getObjects();
-                    for (int i = objects.size() - 1; i >= 0; i--) {
-                        BdocObject obj = objects.get(i);
-                        Geometry g = obj.getGeometry();
-                        if (e.getX() >= g.getX() && e.getX() <= g.getX() + g.getWidth() &&
-                                e.getY() >= g.getY() && e.getY() <= g.getY() + g.getHeight()) {
-                            found = obj;
-                            break;
-                        }
+                // Перебираем объекты с конца в начало (верхние слои в приоритете)
+                BdocObject found = null;
+                List<BdocObject> objects = page.getObjects();
+                for (int i = objects.size() - 1; i >= 0; i--) {
+                    BdocObject obj = objects.get(i);
+                    Geometry g = obj.getGeometry();
+                    if (e.getX() >= g.getX() && e.getX() <= g.getX() + g.getWidth() &&
+                            e.getY() >= g.getY() && e.getY() <= g.getY() + g.getHeight()) {
+                        found = obj;
+                        break;
                     }
-                    selectedObject = found;
+                }
+
+                selectedObject = found;
+
+                // --- ЛОГИКА ИНСТРУМЕНТА: SELECTION (СТРЕЛКА) ---
+                if (currentTool == DtpTool.SELECTION) {
                     if (selectedObject != null) {
                         dragStartX = e.getX();
                         dragStartY = e.getY();
                         objectInitialX = selectedObject.getGeometry().getX();
                         objectInitialY = selectedObject.getGeometry().getY();
                         statusLabel.setText("Selected: " + selectedObject.getId() + " (" + selectedObject.getType() + ")");
-                        updatePropertiesPane(page, selectedObject); // Обновляем панель управления слоем
+                        updatePropertiesPane(page, selectedObject);
                     } else {
-                        propertiesContainer.getChildren().clear(); // Кликнули в пустоту
+                        propertiesContainer.getChildren().clear();
                     }
                     renderCurrentPage();
                 }
+                // --- ЛОГИКА ИНСТРУМЕНТА: TEXT (ТЕКСТ) ---
                 else if (currentTool == DtpTool.TEXT) {
-                    // Инструмент ТЕКСТ: выводим сообщение, куда кликнули
-                    statusLabel.setText("Text tool clicked at X: " + Math.round(e.getX()) + ", Y: " + Math.round(e.getY()));
+                    if (selectedObject instanceof TextFrame textFrame) {
+                        StoryModel story = document.getStory(textFrame.getStoryRef());
+                        statusLabel.setText("Editing Story: " + textFrame.getStoryRef());
+
+                        // Перерисовываем экран, чтобы выделить текстовый фрейм
+                        renderCurrentPage();
+
+                        // Активируем панель текстового редактора справа
+                        updateTextEditorPane(textFrame, story);
+                    } else {
+                        statusLabel.setText("Text tool: click inside a TextFrame to edit text");
+                        propertiesContainer.getChildren().clear();
+                        renderCurrentPage();
+                    }
                 }
             } catch (IOException ex) {
                 showError("Mouse Error", ex.getMessage());
@@ -343,5 +360,56 @@ public class BdocEditorApp extends Application {
                 opacitySlider
         );
     }
+
+    private void updateTextEditorPane(TextFrame textFrame, StoryModel story) {
+        propertiesContainer.getChildren().clear();
+
+        Label titleLabel = new Label("Text Frame Content");
+        titleLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 12px;");
+
+        Label infoLabel = new Label("Frame ID: " + textFrame.getId() + "\nStory Ref: " + textFrame.getStoryRef());
+        infoLabel.setStyle("-fx-text-fill: #64748B; -fx-font-size: 11px;");
+
+        storyTextArea = new TextArea();
+        storyTextArea.setPrefHeight(300);
+        storyTextArea.setWrapText(true);
+
+        // Загружаем текущий текст истории в поле ввода
+        if (story != null) {
+            storyTextArea.setText(story.getJoinedText());
+        }
+
+        // Слушатель изменений: как только пользователь вводит символ или удаляет мусор/рекламу,
+        // данные сохраняются в StoryModel в памяти, и холст мгновенно обновляется
+        storyTextArea.textProperty().addListener((obs, oldText, newText) -> {
+            if (story != null) {
+                // Очищаем старые параграфы и записываем обновленный текст
+                story.getParagraphs().clear();
+
+                // Разбиваем введенный текст по строкам, чтобы восстановить структуру параграфов
+                String[] lines = newText.split("\n");
+                for (String line : lines) {
+                    // Создаем чистый параграф (роль body, стиль по умолчанию body-text)
+                    story.getParagraphs().add(new Paragraph("body", "body-text", line));
+                }
+
+                // Мгновенно пересчитываем Layout и перерисовываем Canvas через TextWrapper
+                renderCurrentPage();
+            }
+        });
+
+        Label hintLabel = new Label("Tip: You can paste cleaned OCR text here. Advertisement blocks can be wiped instantly.");
+        hintLabel.setWrapText(true);
+        hintLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px; -fx-font-style: italic;");
+
+        propertiesContainer.getChildren().addAll(
+                titleLabel,
+                infoLabel,
+                new Separator(),
+                storyTextArea,
+                hintLabel
+        );
+    }
+
 
 }
