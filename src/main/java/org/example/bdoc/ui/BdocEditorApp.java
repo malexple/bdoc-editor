@@ -1,5 +1,7 @@
 package org.example.bdoc.ui;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
@@ -308,27 +310,34 @@ public class BdocEditorApp extends Application {
     }
 
     private void onSaveAs(Stage stage) {
-        if (currentFile == null) {
+        if (document == null) {
             showError("Save error", "No document is currently open.");
             return;
         }
         FileChooser fc = new FileChooser();
         fc.setTitle("Save BDoc file as");
         fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("BDoc files", "*.bdoc"));
-        fc.setInitialFileName(currentFile.getName());
+
+        if (currentFile != null) {
+            fc.setInitialFileName("restored_" + currentFile.getName());
+        } else {
+            fc.setInitialFileName("document.bdoc");
+        }
+
         File target = fc.showSaveDialog(stage);
         if (target == null) {
             return;
         }
         try {
-            // Редактор пока не изменяет содержимое документа "на месте",
-            // поэтому Save As копирует ZIP-контейнер целиком.
-            // Как только появятся операции редактирования, это заменится
-            // на пересборку через BdocContainerSerializer.Writer.
-            Files.copy(currentFile.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            statusLabel.setText("Saved to " + target.getAbsolutePath());
+            statusLabel.setText("Re-packing BDoc archive with new layout and text...");
+
+            // Вызываем метод полной компиляции измененных данных в ZIP+CBOR контейнер
+            saveDocument(document, target);
+
+            statusLabel.setText("Saved to " + target.getAbsolutePath() + " [Pack OK]");
         } catch (IOException ex) {
-            showError("Save error", ex.getMessage());
+            showError("Save error", "Failed to compile document package: " + ex.getMessage());
+            ex.printStackTrace();
         }
     }
 
@@ -497,5 +506,92 @@ public class BdocEditorApp extends Application {
         );
     }
 
+    private void saveDocument(DocumentHandle handle, File targetFile) throws IOException {
+        ObjectMapper jsonMapper = new ObjectMapper();
+        CBORMapper cborMapper = new CBORMapper();
 
+        // Настройки для создания нового ZIP-архива средствами Java
+        java.util.Map<String, String> env = new java.util.HashMap<>();
+        env.put("create", "true");
+
+        if (targetFile.exists()) {
+            targetFile.delete();
+        }
+
+        java.net.URI uri = java.net.URI.create("jar:file:" + targetFile.toURI().getPath());
+
+        try (java.nio.file.FileSystem zipfs = java.nio.file.FileSystems.newFileSystem(uri, env)) {
+            // 1. Создаем внутреннюю структуру пакета BDoc
+            java.nio.file.Files.createDirectories(zipfs.getPath("/pages"));
+            java.nio.file.Files.createDirectories(zipfs.getPath("/stories"));
+            java.nio.file.Files.createDirectories(zipfs.getPath("/resources"));
+
+            // 2. Сериализуем текстовые истории (Stories), которые пользователь очистил от рекламы
+            for (String storyId : handle.getStoryIds()) {
+                StoryModel story = handle.getStory(storyId);
+                if (story != null) {
+                    java.nio.file.Path storyPath = zipfs.getPath("/stories/" + storyId + ".json");
+                    try (java.io.OutputStream os = java.nio.file.Files.newOutputStream(storyPath)) {
+                        jsonMapper.writerWithDefaultPrettyPrinter().writeValue(os, story);
+                    }
+                }
+            }
+
+            // 3. Сериализуем страницы (Pages) в бинарный CBOR с обновленной геометрией из памяти
+            // Пробегаемся по всем индексам, которые вернул дескриптор
+            for (Integer index : handle.getPageIndices()) {
+                PageModel page = handle.loadPage(index); // Использует кэш handle, сохраняя правки Resize
+
+                // Нам нужно определить имя файла страницы.
+                // Для совместимости с дефолтным сэмплом используем шаблон "page-X.cbor"
+                java.nio.file.Path pagePath = zipfs.getPath("/pages/page-" + index + ".cbor");
+                try (java.io.OutputStream os = java.nio.file.Files.newOutputStream(pagePath)) {
+                    cborMapper.writeValue(os, page);
+                }
+            }
+
+            // 4. Формируем и сохраняем manifest.json
+            // Так как manifest в DocumentHandle скрыт (private), мы собираем его динамически
+            // на основе метаданных и существующих индексов из открытого handle
+            java.util.Map<String, Object> manifestMap = new java.util.HashMap<>();
+            manifestMap.put("id", handle.getId());
+            manifestMap.put("title", handle.getTitle());
+            manifestMap.put("documentType", handle.getDocumentType());
+            manifestMap.put("version", "0.1-composite");
+
+            // Формируем список страниц для манифеста
+            java.util.List<java.util.Map<String, Object>> pagesList = new java.util.ArrayList<>();
+            for (Integer index : handle.getPageIndices()) {
+                java.util.Map<String, Object> pEntry = new java.util.HashMap<>();
+                pEntry.put("index", index);
+                pEntry.put("id", "page-" + index);
+                pEntry.put("file", "pages/page-" + index + ".cbor");
+                pagesList.add(pEntry);
+            }
+            manifestMap.put("pages", pagesList);
+
+            // Формируем список историй для манифеста
+            java.util.List<java.util.Map<String, Object>> storiesList = new java.util.ArrayList<>();
+            for (String storyId : handle.getStoryIds()) {
+                java.util.Map<String, Object> sEntry = new java.util.HashMap<>();
+                sEntry.put("id", storyId);
+                sEntry.put("file", "stories/" + storyId + ".json");
+                storiesList.add(sEntry);
+            }
+            manifestMap.put("stories", storiesList);
+
+            java.nio.file.Path manifestPath = zipfs.getPath("/manifest.json");
+            try (java.io.OutputStream os = java.nio.file.Files.newOutputStream(manifestPath)) {
+                jsonMapper.writerWithDefaultPrettyPrinter().writeValue(os, manifestMap);
+            }
+
+            // 5. Перенос каталога стилей (Styles)
+            if (handle.getStyles() != null) {
+                java.nio.file.Path stylesPath = zipfs.getPath("/styles.json");
+                try (java.io.OutputStream os = java.nio.file.Files.newOutputStream(stylesPath)) {
+                    jsonMapper.writerWithDefaultPrettyPrinter().writeValue(os, handle.getStyles());
+                }
+            }
+        }
+    }
 }
