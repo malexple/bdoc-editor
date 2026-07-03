@@ -7,10 +7,10 @@ public final class Geometry {
     // Убираем final для координат X и Y, чтобы фреймы можно было двигать
     private double x;
     private double y;
-    private final double width;
-    private final double height;
-    private final Double arcWidth;
-    private final Double arcHeight;
+    private double width;
+    private double height;
+    private Double arcWidth;
+    private Double arcHeight;
 
     @JsonCreator
     public Geometry(
@@ -42,4 +42,7 @@ public final class Geometry {
     // Сеттеры для интерактивного перемещения мышкой
     public void setX(double x) { this.x = x; }
     public void setY(double y) { this.y = y; }
+
+    public void setWidth(double width) { this.width = width; }
+    public void setHeight(double height) { this.height = height; }
 }

@@ -49,6 +49,14 @@ public class BdocEditorApp extends Application {
     private CheckBox visibleCheckBox;
     private TextArea storyTextArea;
 
+    // Состояние изменения размеров (Resize)
+    private boolean isResizing = false;
+    private int resizeHandleIndex = -1; // 0: верхний-левый, 1: верхний-правый, 2: нижний-левый, 3: нижний-правый
+    private double initialWidth = 0;
+    private double initialHeight = 0;
+    private final double HANDLE_SIZE = 6.0; // Должно совпадать с размером квадратиков в PageRenderer
+
+
 
     @Override
     public void start(Stage stage) {
@@ -113,7 +121,41 @@ public class BdocEditorApp extends Application {
             try {
                 PageModel page = document.loadPage(currentPageIndex);
 
-                // Перебираем объекты с конца в начало (верхние слои в приоритете)
+                // --- 1. ПРОВЕРКА НА КЛИК ПО УГЛОВЫМ МАРКЕРАМ (RESIZE) ---
+                if (currentTool == DtpTool.SELECTION && selectedObject != null) {
+                    Geometry g = selectedObject.getGeometry();
+                    double x = e.getX();
+                    double y = e.getY();
+
+                    // Координаты углов с учётом размера маркера
+                    double[][] handles = {
+                            {g.getX(), g.getY()},                                 // 0: Топ-Лево
+                            {g.getX() + g.getWidth(), g.getY()},                  // 1: Топ-Право
+                            {g.getX(), g.getY() + g.getHeight()},                 // 2: Низ-Лево
+                            {g.getX() + g.getWidth(), g.getY() + g.getHeight()}   // 3: Низ-Право
+                    };
+
+                    for (int i = 0; i < handles.length; i++) {
+                        if (x >= handles[i][0] - HANDLE_SIZE && x <= handles[i][0] + HANDLE_SIZE &&
+                                y >= handles[i][1] - HANDLE_SIZE && y <= handles[i][1] + HANDLE_SIZE) {
+                            isResizing = true;
+                            resizeHandleIndex = i;
+                            dragStartX = x;
+                            dragStartY = y;
+                            objectInitialX = g.getX();
+                            objectInitialY = g.getY();
+                            initialWidth = g.getWidth();
+                            initialHeight = g.getHeight();
+                            statusLabel.setText("Resizing object from corner: " + i);
+                            return; // Прерываем метод, обычное выделение делать не нужно
+                        }
+                    }
+                }
+
+                // --- 2. ОБЫЧНЫЙ ПОИСК ОБЪЕКТА ДЛЯ ВЫДЕЛЕНИЯ / ПЕРЕМЕЩЕНИЯ ---
+                isResizing = false;
+                resizeHandleIndex = -1;
+
                 BdocObject found = null;
                 List<BdocObject> objects = page.getObjects();
                 for (int i = objects.size() - 1; i >= 0; i--) {
@@ -128,51 +170,95 @@ public class BdocEditorApp extends Application {
 
                 selectedObject = found;
 
-                // --- ЛОГИКА ИНСТРУМЕНТА: SELECTION (СТРЕЛКА) ---
                 if (currentTool == DtpTool.SELECTION) {
                     if (selectedObject != null) {
                         dragStartX = e.getX();
                         dragStartY = e.getY();
                         objectInitialX = selectedObject.getGeometry().getX();
                         objectInitialY = selectedObject.getGeometry().getY();
-                        statusLabel.setText("Selected: " + selectedObject.getId() + " (" + selectedObject.getType() + ")");
+                        statusLabel.setText("Selected: " + selectedObject.getId());
                         updatePropertiesPane(page, selectedObject);
                     } else {
                         propertiesContainer.getChildren().clear();
                     }
                     renderCurrentPage();
                 }
-                // --- ЛОГИКА ИНСТРУМЕНТА: TEXT (ТЕКСТ) ---
                 else if (currentTool == DtpTool.TEXT) {
                     if (selectedObject instanceof TextFrame textFrame) {
                         StoryModel story = document.getStory(textFrame.getStoryRef());
                         statusLabel.setText("Editing Story: " + textFrame.getStoryRef());
-
-                        // Перерисовываем экран, чтобы выделить текстовый фрейм
                         renderCurrentPage();
-
-                        // Активируем панель текстового редактора справа
                         updateTextEditorPane(textFrame, story);
                     } else {
-                        statusLabel.setText("Text tool: click inside a TextFrame to edit text");
                         propertiesContainer.getChildren().clear();
                         renderCurrentPage();
                     }
                 }
             } catch (IOException ex) {
-                showError("Mouse Error", ex.getMessage());
+                showError("Mouse Press Error", ex.getMessage());
             }
         });
 
         canvas.setOnMouseDragged(e -> {
-            if (currentTool == DtpTool.SELECTION && selectedObject != null) {
-                // Вариант А: Прямо меняем координаты в mutable-геометрии
-                double deltaX = e.getX() - dragStartX;
-                double deltaY = e.getY() - dragStartY;
-                selectedObject.getGeometry().setX(objectInitialX + deltaX);
-                selectedObject.getGeometry().setY(objectInitialY + deltaY);
+            if (selectedObject == null) return;
+
+            double deltaX = e.getX() - dragStartX;
+            double deltaY = e.getY() - dragStartY;
+            Geometry g = selectedObject.getGeometry();
+
+            // --- ЛОГИКА ИЗМЕНЕНИЯ РАЗМЕРОВ (RESIZE) ---
+            if (isResizing) {
+                switch (resizeHandleIndex) {
+                    case 0 -> { // Топ-Лево: меняются и координаты, и размеры
+                        double newWidth = initialWidth - deltaX;
+                        double newHeight = initialHeight - deltaY;
+                        if (newWidth > 10 && newHeight > 10) {
+                            g.setX(objectInitialX + deltaX);
+                            g.setY(objectInitialY + deltaY);
+                            g.setWidth(newWidth);
+                            g.setHeight(newHeight);
+                        }
+                    }
+                    case 1 -> { // Топ-Право: меняется координата Y, ширина и высота
+                        double newWidth = initialWidth + deltaX;
+                        double newHeight = initialHeight - deltaY;
+                        if (newWidth > 10 && newHeight > 10) {
+                            g.setY(objectInitialY + deltaY);
+                            g.setWidth(newWidth);
+                            g.setHeight(newHeight);
+                        }
+                    }
+                    case 2 -> { // Низ-Лево: меняется координата X, ширина и высота
+                        double newWidth = initialWidth - deltaX;
+                        double newHeight = initialHeight + deltaY;
+                        if (newWidth > 10 && newHeight > 10) {
+                            g.setX(objectInitialX + deltaX);
+                            g.setWidth(newWidth);
+                            g.setHeight(newHeight);
+                        }
+                    }
+                    case 3 -> { // Низ-Право: меняются только ширина и высота (самый частый кейс)
+                        double newWidth = initialWidth + deltaX;
+                        double newHeight = initialHeight + deltaY;
+                        if (newWidth > 10 && newHeight > 10) {
+                            g.setWidth(newWidth);
+                            g.setHeight(newHeight);
+                        }
+                    }
+                }
+                renderCurrentPage(); // Мгновенный пересчет переноса строк внутри фрейма при изменении ширины!
+            }
+            // --- ОБЫЧНОЕ ПЕРЕМЕЩЕНИЕ (DRAG) ---
+            else if (currentTool == DtpTool.SELECTION) {
+                g.setX(objectInitialX + deltaX);
+                g.setY(objectInitialY + deltaY);
                 renderCurrentPage();
             }
+        });
+
+        canvas.setOnMouseReleased(e -> {
+            isResizing = false;
+            resizeHandleIndex = -1;
         });
 
         BorderPane root = new BorderPane();
