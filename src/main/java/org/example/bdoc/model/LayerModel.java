@@ -1,55 +1,33 @@
 package org.example.bdoc.model;
 
-import jakarta.xml.bind.annotation.XmlAccessType;
-import jakarta.xml.bind.annotation.XmlAccessorType;
-import jakarta.xml.bind.annotation.XmlAttribute;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-@XmlAccessorType(XmlAccessType.FIELD)
-public class LayerModel {
+public final class LayerModel {
 
-    @XmlAttribute
-    private String id;
+    private final String id;
+    private final String name;
+    private final String role;
+    private final boolean visible;
+    private final double opacity;
 
-    @XmlAttribute
-    private String name;
-
-    @XmlAttribute
-    private LayerRole role;
-
-    @XmlAttribute
-    private boolean visible;
-
-    @XmlAttribute
-    private int zIndex;
-
-    public LayerModel() {
-    }
-
-    public LayerModel(String id, String name, LayerRole role, boolean visible, int zIndex) {
+    @JsonCreator
+    public LayerModel(
+            @JsonProperty("id") String id,
+            @JsonProperty("name") String name,
+            @JsonProperty("role") String role,
+            @JsonProperty("visible") boolean visible,
+            @JsonProperty("opacity") Double opacity) {
         this.id = id;
         this.name = name;
         this.role = role;
         this.visible = visible;
-        this.zIndex = zIndex;
+        this.opacity = opacity != null ? opacity : 1.0;
     }
 
-    public String getId() {
-        return id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public LayerRole getRole() {
-        return role;
-    }
-
-    public boolean isVisible() {
-        return visible;
-    }
-
-    public int getZIndex() {
-        return zIndex;
-    }
+    public String getId() { return id; }
+    public String getName() { return name; }
+    public String getRole() { return role; }
+    public boolean isVisible() { return visible; }
+    public double getOpacity() { return opacity; }
 }

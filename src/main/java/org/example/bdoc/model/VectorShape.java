@@ -1,26 +1,24 @@
 package org.example.bdoc.model;
 
-import jakarta.xml.bind.annotation.XmlAccessType;
-import jakarta.xml.bind.annotation.XmlAccessorType;
-import jakarta.xml.bind.annotation.XmlAttribute;
-import jakarta.xml.bind.annotation.XmlRootElement;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-@XmlRootElement(name = "vectorShape")
-@XmlAccessorType(XmlAccessType.FIELD)
-public class VectorShape extends BdocObject {
+public final class VectorShape extends BdocObject {
 
-    @XmlAttribute(name = "type")
-    private ShapeType shapeType;
+    private final String shapeType;
 
-    public VectorShape() {
-    }
-
-    public VectorShape(String id, String layerRef, ShapeType shapeType, Geometry geometry) {
+    @JsonCreator
+    public VectorShape(
+            @JsonProperty("id") String id,
+            @JsonProperty("layerRef") String layerRef,
+            @JsonProperty("geometry") Geometry geometry,
+            @JsonProperty("shapeType") String shapeType) {
         super(id, layerRef, geometry);
         this.shapeType = shapeType;
     }
 
-    public ShapeType getShapeType() {
-        return shapeType;
-    }
+    public String getShapeType() { return shapeType; }
+
+    @Override
+    public String getType() { return "VectorShape"; }
 }

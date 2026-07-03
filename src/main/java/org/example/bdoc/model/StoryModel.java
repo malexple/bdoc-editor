@@ -1,46 +1,28 @@
 package org.example.bdoc.model;
 
-import jakarta.xml.bind.annotation.XmlAccessType;
-import jakarta.xml.bind.annotation.XmlAccessorType;
-import jakarta.xml.bind.annotation.XmlAttribute;
-import jakarta.xml.bind.annotation.XmlElement;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.util.ArrayList;
 import java.util.List;
 
-@XmlAccessorType(XmlAccessType.FIELD)
-public class StoryModel {
+public final class StoryModel {
 
-    @XmlAttribute
-    private String id;
+    private final String id;
+    private final List<Paragraph> paragraphs;
 
-    @XmlElement(name = "paragraph")
-    private List<Paragraph> paragraphs = new ArrayList<>();
-
-    public StoryModel() {
-    }
-
-    public StoryModel(String id) {
+    @JsonCreator
+    public StoryModel(
+            @JsonProperty("id") String id,
+            @JsonProperty("paragraphs") List<Paragraph> paragraphs) {
         this.id = id;
+        this.paragraphs = paragraphs != null ? paragraphs : List.of();
     }
 
-    public StoryModel(String id, List<Paragraph> paragraphs) {
-        this.id = id;
-        this.paragraphs = paragraphs;
-    }
+    public String getId() { return id; }
+    public List<Paragraph> getParagraphs() { return paragraphs; }
 
-    public String getId() {
-        return id;
-    }
-
-    public List<Paragraph> getParagraphs() {
-        return paragraphs;
-    }
-
-    public void addParagraph(Paragraph paragraph) {
-        paragraphs.add(paragraph);
-    }
-
+    @JsonIgnore
     public String getJoinedText() {
         return paragraphs.stream()
                 .map(Paragraph::getText)

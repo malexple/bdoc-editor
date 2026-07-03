@@ -1,81 +1,43 @@
 package org.example.bdoc.model;
 
-import jakarta.xml.bind.annotation.XmlAccessType;
-import jakarta.xml.bind.annotation.XmlAccessorType;
-import jakarta.xml.bind.annotation.XmlAttribute;
-import jakarta.xml.bind.annotation.XmlElement;
-import jakarta.xml.bind.annotation.XmlElementRef;
-import jakarta.xml.bind.annotation.XmlElementRefs;
-import jakarta.xml.bind.annotation.XmlElementWrapper;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.util.ArrayList;
 import java.util.List;
 
-@XmlAccessorType(XmlAccessType.FIELD)
-public class PageModel {
+public final class PageModel {
 
-    @XmlAttribute
-    private String id;
+    private final String id;
+    private final int index;
+    private final double width;
+    private final double height;
+    private final String unit;
+    private final List<LayerModel> layers;
+    private final List<BdocObject> objects;
 
-    @XmlAttribute
-    private int index;
-
-    @XmlAttribute
-    private double width;
-
-    @XmlAttribute
-    private double height;
-
-    @XmlElementWrapper(name = "layers")
-    @XmlElement(name = "layer")
-    private List<LayerModel> layers = new ArrayList<>();
-
-    @XmlElementWrapper(name = "objects")
-    @XmlElementRefs({
-            @XmlElementRef(type = TextFrame.class),
-            @XmlElementRef(type = VectorShape.class)
-    })
-    private List<BdocObject> objects = new ArrayList<>();
-
-    public PageModel() {
-    }
-
-    public PageModel(String id, int index, double width, double height) {
+    @JsonCreator
+    public PageModel(
+            @JsonProperty("id") String id,
+            @JsonProperty("index") int index,
+            @JsonProperty("width") double width,
+            @JsonProperty("height") double height,
+            @JsonProperty("unit") String unit,
+            @JsonProperty("layers") List<LayerModel> layers,
+            @JsonProperty("objects") List<BdocObject> objects) {
         this.id = id;
         this.index = index;
         this.width = width;
         this.height = height;
+        this.unit = unit != null ? unit : "pt";
+        this.layers = layers != null ? layers : List.of();
+        this.objects = objects != null ? objects : List.of();
     }
 
-    public String getId() {
-        return id;
-    }
-
-    public int getIndex() {
-        return index;
-    }
-
-    public double getWidth() {
-        return width;
-    }
-
-    public double getHeight() {
-        return height;
-    }
-
-    public List<LayerModel> getLayers() {
-        return layers;
-    }
-
-    public List<BdocObject> getObjects() {
-        return objects;
-    }
-
-    public void addLayer(LayerModel layer) {
-        layers.add(layer);
-    }
-
-    public void addObject(BdocObject object) {
-        objects.add(object);
-    }
+    public String getId() { return id; }
+    public int getIndex() { return index; }
+    public double getWidth() { return width; }
+    public double getHeight() { return height; }
+    public String getUnit() { return unit; }
+    public List<LayerModel> getLayers() { return layers; }
+    public List<BdocObject> getObjects() { return objects; }
 }

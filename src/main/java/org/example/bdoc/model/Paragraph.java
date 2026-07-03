@@ -1,32 +1,25 @@
 package org.example.bdoc.model;
 
-import jakarta.xml.bind.annotation.XmlAccessType;
-import jakarta.xml.bind.annotation.XmlAccessorType;
-import jakarta.xml.bind.annotation.XmlAttribute;
-import jakarta.xml.bind.annotation.XmlValue;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-@XmlAccessorType(XmlAccessType.FIELD)
-public class Paragraph {
+public final class Paragraph {
 
-    @XmlAttribute
-    private String role;
+    private final String role;
+    private final String styleRef;
+    private final String text;
 
-    @XmlValue
-    private String text;
-
-    public Paragraph() {
-    }
-
-    public Paragraph(String role, String text) {
+    @JsonCreator
+    public Paragraph(
+            @JsonProperty("role") String role,
+            @JsonProperty("styleRef") String styleRef,
+            @JsonProperty("text") String text) {
         this.role = role;
+        this.styleRef = styleRef;
         this.text = text;
     }
 
-    public String getRole() {
-        return role;
-    }
-
-    public String getText() {
-        return text;
-    }
+    public String getRole() { return role; }
+    public String getStyleRef() { return styleRef; }
+    public String getText() { return text; }
 }

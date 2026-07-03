@@ -1,38 +1,25 @@
 package org.example.bdoc.model;
 
-import jakarta.xml.bind.annotation.XmlAccessType;
-import jakarta.xml.bind.annotation.XmlAccessorType;
-import jakarta.xml.bind.annotation.XmlAttribute;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-@XmlAccessorType(XmlAccessType.FIELD)
-public class Geometry {
+public final class Geometry {
 
-    @XmlAttribute
-    private double x;
+    private final double x;
+    private final double y;
+    private final double width;
+    private final double height;
+    private final Double arcWidth;
+    private final Double arcHeight;
 
-    @XmlAttribute
-    private double y;
-
-    @XmlAttribute
-    private double width;
-
-    @XmlAttribute
-    private double height;
-
-    @XmlAttribute
-    private Double arcWidth;
-
-    @XmlAttribute
-    private Double arcHeight;
-
-    public Geometry() {
-    }
-
-    public Geometry(double x, double y, double width, double height) {
-        this(x, y, width, height, null, null);
-    }
-
-    public Geometry(double x, double y, double width, double height, Double arcWidth, Double arcHeight) {
+    @JsonCreator
+    public Geometry(
+            @JsonProperty("x") double x,
+            @JsonProperty("y") double y,
+            @JsonProperty("width") double width,
+            @JsonProperty("height") double height,
+            @JsonProperty("arcWidth") Double arcWidth,
+            @JsonProperty("arcHeight") Double arcHeight) {
         this.x = x;
         this.y = y;
         this.width = width;
@@ -41,27 +28,14 @@ public class Geometry {
         this.arcHeight = arcHeight;
     }
 
-    public double getX() {
-        return x;
+    public Geometry(double x, double y, double width, double height) {
+        this(x, y, width, height, null, null);
     }
 
-    public double getY() {
-        return y;
-    }
-
-    public double getWidth() {
-        return width;
-    }
-
-    public double getHeight() {
-        return height;
-    }
-
-    public Double getArcWidth() {
-        return arcWidth;
-    }
-
-    public Double getArcHeight() {
-        return arcHeight;
-    }
+    public double getX() { return x; }
+    public double getY() { return y; }
+    public double getWidth() { return width; }
+    public double getHeight() { return height; }
+    public Double getArcWidth() { return arcWidth; }
+    public Double getArcHeight() { return arcHeight; }
 }
