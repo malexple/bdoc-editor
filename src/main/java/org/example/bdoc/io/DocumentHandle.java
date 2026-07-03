@@ -74,4 +74,16 @@ public final class DocumentHandle implements Closeable {
     public void close() throws IOException {
         container.close();
     }
+
+    public java.util.Set<Integer> getPageIndices() {
+        return pageEntriesByIndex.keySet();
+    }
+
+    public boolean hasResource(String assetRef) {
+        return container.exists(assetRef);
+    }
+
+    public java.util.Set<String> getStoryIds() {
+        return storiesById.keySet();
+    }
 }
