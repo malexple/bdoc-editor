@@ -20,13 +20,19 @@ public final class SampleDocuments {
         BdocContainerSerializer serializer = new BdocContainerSerializer();
 
         try (BdocContainerSerializer.Writer writer = serializer.beginWrite(target)) {
+            ParagraphStyle bodyStyle = new ParagraphStyle(
+                    "body-text", null, "Georgia", 16.0, 1.4, "left", "#1E293B"
+            );
+            ParagraphStyle headingStyle = new ParagraphStyle(
+                    "heading-1", "body-text", "Georgia", 26.0, 1.2, "center", "#0F172A"
+            );
+
             StoryModel story = new StoryModel("story-1", List.of(
-                    new Paragraph(
-                            "body",
-                            "main-text",
-                            "Это тестовый документ BDoc v0.1-composite. Сначала фиксируется " +
-                                    "структура документа, а затем программа применяет отображение."
-                    )
+                    new Paragraph("heading", "heading-1", "Демонстрация стилей BDoc"),
+                    new Paragraph("body", "body-text",
+                            "Это тестовый документ BDoc v0.1-composite. Параграф заголовка наследует " +
+                                    "шрифт и цвет от body-text через basedOn, но переопределяет размер, " +
+                                    "выравнивание и цвет.")
             ));
             writer.writeStory(story);
 
@@ -59,9 +65,14 @@ public final class SampleDocuments {
             );
             writer.writePage(page);
 
+            StylesCatalog styles = new StylesCatalog(
+                    List.of(bodyStyle, headingStyle),
+                    List.of()
+            );
+
             writer.finish(
                     "doc-1", "BDoc Demo", "book",
-                    "0.1-composite", "ru-RU", StylesCatalog.empty()
+                    "0.1-composite", "ru-RU", styles
             );
         }
     }
