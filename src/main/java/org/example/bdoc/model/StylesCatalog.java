@@ -27,4 +27,8 @@ public final class StylesCatalog {
     public ParagraphStyle findParagraphStyle(String id) {
         return paragraphStyles.stream().filter(s -> s.getId().equals(id)).findFirst().orElse(null);
     }
+
+    public CharacterStyle findCharacterStyle(String id) {
+        return characterStyles.stream().filter(s -> s.getId().equals(id)).findFirst().orElse(null);
+    }
 }

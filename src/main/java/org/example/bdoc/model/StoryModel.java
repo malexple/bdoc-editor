@@ -25,7 +25,7 @@ public final class StoryModel {
     @JsonIgnore
     public String getJoinedText() {
         return paragraphs.stream()
-                .map(Paragraph::getText)
+                .map(Paragraph::getPlainText)
                 .reduce((a, b) -> a + "\n" + b)
                 .orElse("");
     }

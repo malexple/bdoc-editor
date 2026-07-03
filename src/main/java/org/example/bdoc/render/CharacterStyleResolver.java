@@ -1,0 +1,59 @@
+package org.example.bdoc.render;
+
+import org.example.bdoc.model.CharacterStyle;
+import org.example.bdoc.model.StylesCatalog;
+
+import java.util.HashSet;
+import java.util.Set;
+
+public final class CharacterStyleResolver {
+
+    private final StylesCatalog styles;
+
+    public CharacterStyleResolver(StylesCatalog styles) {
+        this.styles = styles;
+    }
+
+    /**
+     * Разрешает CharacterStyle span'а, используя эффективный стиль параграфа
+     * как базу для незаданных полей (наследование "снизу вверх": span -> ... -> paragraph style).
+     */
+    public EffectiveCharacterStyle resolve(String characterStyleRef, EffectiveParagraphStyle paragraphFallback) {
+        String fontFamily = null;
+        Double fontSize = null;
+        Boolean bold = null;
+        Boolean italic = null;
+        String color = null;
+
+        Set<String> visited = new HashSet<>();
+        String currentId = characterStyleRef;
+
+        while (currentId != null) {
+            if (!visited.add(currentId)) {
+                throw new IllegalStateException(
+                        "Cyclic basedOn reference detected in character styles: " + currentId);
+            }
+
+            CharacterStyle style = styles.findCharacterStyle(currentId);
+            if (style == null) {
+                break;
+            }
+
+            if (fontFamily == null) fontFamily = style.getFontFamily();
+            if (fontSize == null) fontSize = style.getFontSize();
+            if (bold == null && style.isBold()) bold = true;
+            if (italic == null && style.isItalic()) italic = true;
+            if (color == null) color = style.getColor();
+
+            currentId = style.getBasedOn();
+        }
+
+        return new EffectiveCharacterStyle(
+                fontFamily != null ? fontFamily : paragraphFallback.getFontFamily(),
+                fontSize != null ? fontSize : paragraphFallback.getFontSize(),
+                bold != null && bold,
+                italic != null && italic,
+                color != null ? color : paragraphFallback.getColor()
+        );
+    }
+}

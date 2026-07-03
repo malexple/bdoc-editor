@@ -27,12 +27,19 @@ public final class SampleDocuments {
                     "heading-1", "body-text", "Georgia", 26.0, 1.2, "center", "#0F172A"
             );
 
+            CharacterStyle boldEmphasis = new CharacterStyle(
+                    "emphasis", null, null, null, true, false, "#B91C1C"
+            );
+
+            Paragraph body = new Paragraph("body", "body-text", List.of(
+                    Span.plain("Это тестовый документ BDoc. Параграф "),
+                    new Span("заголовка", "emphasis"),
+                    Span.plain(" наследует шрифт и цвет от body-text через basedOn, но переопределяет размер, выравнивание и цвет.")
+            ));
+
             StoryModel story = new StoryModel("story-1", List.of(
                     new Paragraph("heading", "heading-1", "Демонстрация стилей BDoc"),
-                    new Paragraph("body", "body-text",
-                            "Это тестовый документ BDoc v0.1-composite. Параграф заголовка наследует " +
-                                    "шрифт и цвет от body-text через basedOn, но переопределяет размер, " +
-                                    "выравнивание и цвет.")
+                    body
             ));
             writer.writeStory(story);
 
@@ -67,7 +74,7 @@ public final class SampleDocuments {
 
             StylesCatalog styles = new StylesCatalog(
                     List.of(bodyStyle, headingStyle),
-                    List.of()
+                    List.of(boldEmphasis)
             );
 
             writer.finish(

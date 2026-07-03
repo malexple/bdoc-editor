@@ -5,6 +5,7 @@ import javafx.scene.image.Image;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
+import javafx.scene.text.Text;
 import javafx.scene.text.TextAlignment;
 import org.example.bdoc.io.DocumentHandle;
 import org.example.bdoc.model.*;
@@ -42,12 +43,14 @@ public class PageRenderer {
 
     private void renderObject(GraphicsContext gc, BdocObject object, DocumentHandle document,
                               LayerModel layer, StyleResolver styleResolver) {
+        CharacterStyleResolver characterStyleResolver = new CharacterStyleResolver(document.getStyles());
+
         gc.setGlobalAlpha(layer.getOpacity());
         try {
             if (object instanceof VectorShape shape) {
                 renderShape(gc, shape);
             } else if (object instanceof TextFrame textFrame) {
-                renderTextFrame(gc, textFrame, document.getStory(textFrame.getStoryRef()), styleResolver);
+                renderTextFrame(gc, textFrame, document.getStory(textFrame.getStoryRef()), styleResolver, characterStyleResolver);
             } else if (object instanceof ImageFrame imageFrame) {
                 renderImageFrame(gc, imageFrame, document);
             }
@@ -75,7 +78,7 @@ public class PageRenderer {
     }
 
     private void renderTextFrame(GraphicsContext gc, TextFrame textFrame, StoryModel story,
-                                 StyleResolver styleResolver) {
+                                 StyleResolver styleResolver, CharacterStyleResolver characterStyleResolver) {
         Geometry g = textFrame.getGeometry();
 
         gc.setStroke(Color.web("#94A3B8"));
@@ -94,32 +97,61 @@ public class PageRenderer {
         double maxWidth = g.getWidth() - paddingX * 2;
         double frameBottom = g.getY() + g.getHeight();
 
+        outer:
         for (Paragraph paragraph : story.getParagraphs()) {
-            EffectiveParagraphStyle style = styleResolver.resolve(paragraph.getStyleRef());
+            EffectiveParagraphStyle paragraphStyle = styleResolver.resolve(paragraph.getStyleRef());
 
-            Font font = Font.font(style.getFontFamily(), FontWeight.NORMAL, style.getFontSize());
-            gc.setFont(font);
-            gc.setFill(Color.web(style.getColor()));
-            gc.setTextAlign(resolveAlignment(style.getAlignment()));
+            List<TextWrapper.SpanInput> spanInputs = paragraph.getSpans().stream()
+                    .map(span -> new TextWrapper.SpanInput(
+                            span.getText(),
+                            characterStyleResolver.resolve(span.getCharacterStyleRef(), paragraphStyle)))
+                    .toList();
 
-            double lineAdvance = style.getFontSize() * style.getLineHeight();
-            List<String> lines = TextWrapper.wrap(paragraph.getText(), font, maxWidth);
+            List<List<TextWrapper.Run>> lines = TextWrapper.wrapSpans(spanInputs, maxWidth);
+            double lineAdvance = paragraphStyle.getFontSize() * paragraphStyle.getLineHeight();
 
-            double textX = switch (style.getAlignment()) {
-                case "center" -> g.getX() + g.getWidth() / 2.0;
-                case "right" -> g.getX() + g.getWidth() - paddingX;
-                default -> g.getX() + paddingX;
-            };
-
-            for (String line : lines) {
+            for (List<TextWrapper.Run> line : lines) {
                 if (cursorY + lineAdvance > frameBottom) {
-                    return;
+                    break outer;
                 }
                 cursorY += lineAdvance;
-                gc.fillText(line, textX, cursorY);
+                renderLine(gc, line, g, paddingX, cursorY, paragraphStyle.getAlignment());
             }
 
             cursorY += lineAdvance * 0.3;
+        }
+    }
+
+    private void renderLine(GraphicsContext gc, List<TextWrapper.Run> runs, Geometry g,
+                            double paddingX, double baselineY, String alignment) {
+        if (runs.isEmpty()) {
+            return;
+        }
+
+        Text measurer = new Text();
+        double totalWidth = 0;
+        for (TextWrapper.Run run : runs) {
+            measurer.setFont(run.font);
+            measurer.setText(run.text);
+            totalWidth += measurer.getLayoutBounds().getWidth();
+        }
+
+        double startX = switch (alignment) {
+            case "center" -> g.getX() + (g.getWidth() - totalWidth) / 2.0;
+            case "right" -> g.getX() + g.getWidth() - paddingX - totalWidth;
+            default -> g.getX() + paddingX;
+        };
+
+        gc.setTextAlign(TextAlignment.LEFT);
+        double cursorX = startX;
+        for (TextWrapper.Run run : runs) {
+            gc.setFont(run.font);
+            gc.setFill(Color.web(run.color));
+            gc.fillText(run.text, cursorX, baselineY);
+
+            measurer.setFont(run.font);
+            measurer.setText(run.text);
+            cursorX += measurer.getLayoutBounds().getWidth();
         }
     }
 

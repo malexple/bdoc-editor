@@ -19,6 +19,14 @@ import java.util.*;
  */
 public final class BdocIntegrityValidator {
 
+    private Set<String> collectCharacterStyleIds(StylesCatalog styles) {
+        Set<String> ids = new HashSet<>();
+        for (CharacterStyle style : styles.getCharacterStyles()) {
+            ids.add(style.getId());
+        }
+        return ids;
+    }
+
     public void validate(DocumentHandle document) {
         List<String> errors = new ArrayList<>();
 
@@ -36,6 +44,9 @@ public final class BdocIntegrityValidator {
 
     private void validateStories(DocumentHandle document, Set<String> storyIds,
                                  Set<String> knownParagraphStyleIds, List<String> errors) {
+
+        Set<String> knownCharacterStyleIds = collectCharacterStyleIds(document.getStyles());
+
         for (String storyId : storyIds) {
             StoryModel story = document.getStory(storyId);
 
@@ -50,6 +61,14 @@ public final class BdocIntegrityValidator {
                 if (styleRef != null && !knownParagraphStyleIds.contains(styleRef)) {
                     errors.add("Story '" + storyId + "', paragraph[" + i + "]: " +
                             "styleRef '" + styleRef + "' does not match any ParagraphStyle in styles.json");
+                }
+
+                for (int j = 0; j < paragraph.getSpans().size(); j++) {
+                    String charStyleRef = paragraph.getSpans().get(j).getCharacterStyleRef();
+                    if (charStyleRef != null && !knownCharacterStyleIds.contains(charStyleRef)) {
+                        errors.add("Story '" + storyId + "', paragraph[" + i + "], span[" + j + "]: " +
+                                "characterStyleRef '" + charStyleRef + "' does not match any CharacterStyle in styles.json");
+                    }
                 }
             }
         }
