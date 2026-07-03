@@ -4,12 +4,12 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public final class LayerModel {
-
     private final String id;
     private final String name;
     private final String role;
-    private final boolean visible;
-    private final double opacity;
+    // Делаем поля изменяемыми для ползунков в UI
+    private boolean visible;
+    private double opacity;
 
     @JsonCreator
     public LayerModel(
@@ -30,4 +30,8 @@ public final class LayerModel {
     public String getRole() { return role; }
     public boolean isVisible() { return visible; }
     public double getOpacity() { return opacity; }
+
+    // Сеттеры для управления из панели свойств
+    public void setVisible(boolean visible) { this.visible = visible; }
+    public void setOpacity(double opacity) { this.opacity = opacity; }
 }

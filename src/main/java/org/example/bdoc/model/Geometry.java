@@ -4,9 +4,9 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public final class Geometry {
-
-    private final double x;
-    private final double y;
+    // Убираем final для координат X и Y, чтобы фреймы можно было двигать
+    private double x;
+    private double y;
     private final double width;
     private final double height;
     private final Double arcWidth;
@@ -38,4 +38,8 @@ public final class Geometry {
     public double getHeight() { return height; }
     public Double getArcWidth() { return arcWidth; }
     public Double getArcHeight() { return arcHeight; }
+
+    // Сеттеры для интерактивного перемещения мышкой
+    public void setX(double x) { this.x = x; }
+    public void setY(double y) { this.y = y; }
 }

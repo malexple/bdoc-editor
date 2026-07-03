@@ -21,7 +21,7 @@ public class PageRenderer {
 
     private final Map<String, Image> imageCache = new HashMap<>();
 
-    public void render(GraphicsContext gc, DocumentHandle document, PageModel page) throws IOException {
+    public void render(GraphicsContext gc, DocumentHandle document, PageModel page, BdocObject selectedObject) throws IOException {
         gc.setFill(Color.WHITE);
         gc.fillRect(0, 0, page.getWidth(), page.getHeight());
 
@@ -38,11 +38,11 @@ public class PageRenderer {
                     return layer != null && layer.isVisible();
                 })
                 .sorted(Comparator.comparingInt(o -> page.getLayers().indexOf(layers.get(o.getLayerRef()))))
-                .forEach(object -> renderObject(gc, object, document, layers.get(object.getLayerRef()), styleResolver));
+                .forEach(object -> renderObject(gc, object, document, layers.get(object.getLayerRef()), styleResolver, selectedObject));
     }
 
     private void renderObject(GraphicsContext gc, BdocObject object, DocumentHandle document,
-                              LayerModel layer, StyleResolver styleResolver) {
+                              LayerModel layer, StyleResolver styleResolver, BdocObject selectedObject) {
         CharacterStyleResolver characterStyleResolver = new CharacterStyleResolver(document.getStyles());
 
         gc.setGlobalAlpha(layer.getOpacity());
@@ -58,6 +58,32 @@ public class PageRenderer {
             throw new RuntimeException("Failed to render object: " + object.getId(), e);
         } finally {
             gc.setGlobalAlpha(1.0);
+        }
+
+        if (object == selectedObject) {
+            gc.setStroke(Color.web("#2563EB")); // Яркий синий цвет выделения Adobe InDesign
+            gc.setLineWidth(2.0);
+            Geometry g = object.getGeometry();
+            // Рисуем габаритную рамку выделения
+            gc.strokeRect(g.getX() - 1, g.getY() - 1, g.getWidth() + 2, g.getHeight() + 2);
+
+            // Рисуем маленькие белые квадратики-маркеры по углам фрейма
+            gc.setFill(Color.WHITE);
+            gc.setStroke(Color.web("#2563EB"));
+            gc.setLineWidth(1.0);
+
+            double size = 6.0;
+            gc.fillRect(g.getX() - size/2, g.getY() - size/2, size, size);
+            gc.strokeRect(g.getX() - size/2, g.getY() - size/2, size, size);
+
+            gc.fillRect(g.getX() + g.getWidth() - size/2, g.getY() - size/2, size, size);
+            gc.strokeRect(g.getX() + g.getWidth() - size/2, g.getY() - size/2, size, size);
+
+            gc.fillRect(g.getX() - size/2, g.getY() + g.getHeight() - size/2, size, size);
+            gc.strokeRect(g.getX() - size/2, g.getY() + g.getHeight() - size/2, size, size);
+
+            gc.fillRect(g.getX() + g.getWidth() - size/2, g.getY() + g.getHeight() - size/2, size, size);
+            gc.strokeRect(g.getX() + g.getWidth() - size/2, g.getY() + g.getHeight() - size/2, size, size);
         }
     }
 

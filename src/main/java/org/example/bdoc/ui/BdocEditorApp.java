@@ -7,21 +7,20 @@ import javafx.scene.canvas.Canvas;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.example.bdoc.io.BdocContainerSerializer;
 import org.example.bdoc.io.DocumentHandle;
-import org.example.bdoc.model.ManifestPageEntry;
-import org.example.bdoc.model.PageModel;
-import org.example.bdoc.model.SampleDocuments;
-import org.example.bdoc.model.StoryModel;
+import org.example.bdoc.model.*;
 import org.example.bdoc.render.PageRenderer;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 
 public class BdocEditorApp extends Application {
 
@@ -36,6 +35,20 @@ public class BdocEditorApp extends Application {
     private ListView<String> documentTree;
     private Label statusLabel;
 
+    // Состояние интерактивности и инструментов
+    private DtpTool currentTool = DtpTool.SELECTION;
+    private BdocObject selectedObject = null;
+    private double dragStartX = 0;
+    private double dragStartY = 0;
+    private double objectInitialX = 0;
+    private double objectInitialY = 0;
+
+    // Компоненты панели свойств справа
+    private VBox propertiesContainer;
+    private Slider opacitySlider;
+    private CheckBox visibleCheckBox;
+
+
     @Override
     public void start(Stage stage) {
         documentTree = new ListView<>();
@@ -47,36 +60,103 @@ public class BdocEditorApp extends Application {
         });
 
         canvas = new Canvas(595, 842);
-
         StackPane canvasPane = new StackPane(canvas);
         canvasPane.setPadding(new Insets(24));
         canvasPane.setStyle("-fx-background-color: #CBD5E1;");
 
+        // --- ПАНЕЛЬ СВОЙСТВ (Справа) ---
         BorderPane propertiesPane = new BorderPane();
-        propertiesPane.setTop(new Label("Properties"));
         propertiesPane.setPadding(new Insets(12));
-        propertiesPane.setPrefWidth(220);
+        propertiesPane.setPrefWidth(240);
+        Label propTitle = new Label("Properties & Layers");
+        propTitle.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+        propertiesPane.setTop(propTitle);
+
+        propertiesContainer = new VBox(10);
+        propertiesContainer.setPadding(new Insets(10, 0, 0, 0));
+        propertiesPane.setCenter(propertiesContainer);
 
         SplitPane splitPane = new SplitPane(documentTree, canvasPane, propertiesPane);
-        splitPane.setDividerPositions(0.18, 0.82);
-
+        splitPane.setDividerPositions(0.18, 0.78);
         statusLabel = new Label("No document loaded");
+
+        // --- КНОПКИ ИНСТРУМЕНТОВ (DTP Tools) ---
+        ToggleGroup toolGroup = new ToggleGroup();
+        ToggleButton selectToolBtn = new ToggleButton("🏹 Select");
+        selectToolBtn.setToggleGroup(toolGroup);
+        selectToolBtn.setSelected(true);
+        selectToolBtn.setOnAction(e -> currentTool = DtpTool.SELECTION);
+
+        ToggleButton textToolBtn = new ToggleButton("📝 Text");
+        textToolBtn.setToggleGroup(toolGroup);
+        textToolBtn.setOnAction(e -> currentTool = DtpTool.TEXT);
 
         Button openBtn = new Button("Open");
         openBtn.setOnAction(e -> onOpen(stage));
-
         Button saveAsBtn = new Button("Save As");
         saveAsBtn.setOnAction(e -> onSaveAs(stage));
-
         Button newSampleBtn = new Button("New Sample");
         newSampleBtn.setOnAction(e -> onNewSample(stage));
 
         ToolBar toolBar = new ToolBar(
-                new Label("BDoc Editor v0.1-composite"),
-                newSampleBtn,
-                openBtn,
-                saveAsBtn
+                new Label("BDoc Editor v0.1"),
+                new Separator(),
+                selectToolBtn, textToolBtn, // Панель инструментов верстки
+                new Separator(),
+                newSampleBtn, openBtn, saveAsBtn
         );
+
+        // --- ИНТЕРАКТИВНАЯ ЛОГИКА МЫШИ НА CANVAS ---
+        canvas.setOnMousePressed(e -> {
+            if (document == null) return;
+            try {
+                PageModel page = document.loadPage(currentPageIndex);
+
+                if (currentTool == DtpTool.SELECTION) {
+                    // Логика выделения объектов (черная стрелка)
+                    BdocObject found = null;
+                    List<BdocObject> objects = page.getObjects();
+                    for (int i = objects.size() - 1; i >= 0; i--) {
+                        BdocObject obj = objects.get(i);
+                        Geometry g = obj.getGeometry();
+                        if (e.getX() >= g.getX() && e.getX() <= g.getX() + g.getWidth() &&
+                                e.getY() >= g.getY() && e.getY() <= g.getY() + g.getHeight()) {
+                            found = obj;
+                            break;
+                        }
+                    }
+                    selectedObject = found;
+                    if (selectedObject != null) {
+                        dragStartX = e.getX();
+                        dragStartY = e.getY();
+                        objectInitialX = selectedObject.getGeometry().getX();
+                        objectInitialY = selectedObject.getGeometry().getY();
+                        statusLabel.setText("Selected: " + selectedObject.getId() + " (" + selectedObject.getType() + ")");
+                        updatePropertiesPane(page, selectedObject); // Обновляем панель управления слоем
+                    } else {
+                        propertiesContainer.getChildren().clear(); // Кликнули в пустоту
+                    }
+                    renderCurrentPage();
+                }
+                else if (currentTool == DtpTool.TEXT) {
+                    // Инструмент ТЕКСТ: выводим сообщение, куда кликнули
+                    statusLabel.setText("Text tool clicked at X: " + Math.round(e.getX()) + ", Y: " + Math.round(e.getY()));
+                }
+            } catch (IOException ex) {
+                showError("Mouse Error", ex.getMessage());
+            }
+        });
+
+        canvas.setOnMouseDragged(e -> {
+            if (currentTool == DtpTool.SELECTION && selectedObject != null) {
+                // Вариант А: Прямо меняем координаты в mutable-геометрии
+                double deltaX = e.getX() - dragStartX;
+                double deltaY = e.getY() - dragStartY;
+                selectedObject.getGeometry().setX(objectInitialX + deltaX);
+                selectedObject.getGeometry().setY(objectInitialY + deltaY);
+                renderCurrentPage();
+            }
+        });
 
         BorderPane root = new BorderPane();
         root.setTop(toolBar);
@@ -85,12 +165,12 @@ public class BdocEditorApp extends Application {
         root.setStyle("-fx-font-family: 'Segoe UI'; -fx-background-color: white;");
 
         Scene scene = new Scene(root, 1280, 900, Color.WHITE);
-        stage.setTitle("BDoc Editor");
+        stage.setTitle("BDoc Editor - Реставрация печатных изданий");
         stage.setScene(scene);
         stage.show();
-
         loadInitialSample(stage);
     }
+
 
     private void loadInitialSample(Stage stage) {
         try {
@@ -193,7 +273,7 @@ public class BdocEditorApp extends Application {
             PageModel page = document.loadPage(currentPageIndex);
             canvas.setWidth(page.getWidth());
             canvas.setHeight(page.getHeight());
-            pageRenderer.render(canvas.getGraphicsContext2D(), document, page);
+            pageRenderer.render(canvas.getGraphicsContext2D(), document, page, selectedObject);
         } catch (IOException ex) {
             showError("Render error", ex.getMessage());
         }
@@ -219,4 +299,49 @@ public class BdocEditorApp extends Application {
         alert.setContentText(message);
         alert.showAndWait();
     }
+
+    private void updatePropertiesPane(PageModel page, BdocObject object) {
+        propertiesContainer.getChildren().clear();
+
+        // Находим слой, которому принадлежит объект
+        LayerModel objectLayer = page.getLayers().stream()
+                .filter(l -> l.getId().equals(object.getLayerRef()))
+                .findFirst()
+                .orElse(null);
+
+        if (objectLayer == null) return;
+
+        Label objectInfo = new Label("Object ID: " + object.getId() + "\nType: " + object.getType());
+        objectInfo.setStyle("-fx-text-fill: #475569;");
+
+        Label layerLabel = new Label("Layer: " + objectLayer.getName() + " (" + objectLayer.getRole() + ")");
+        layerLabel.setStyle("-fx-font-weight: bold; -fx-padding: 10 0 0 0;");
+
+        // Чекбокс видимости слоя
+        visibleCheckBox = new CheckBox("Layer Visible");
+        visibleCheckBox.setSelected(objectLayer.isVisible());
+        visibleCheckBox.setOnAction(e -> {
+            objectLayer.setVisible(visibleCheckBox.isSelected());
+            renderCurrentPage();
+        });
+
+        // Ползунок прозрачности слоя (критично для реставрации сканов)
+        Label opacityLabel = new Label("Layer Opacity: " + Math.round(objectLayer.getOpacity() * 100) + "%");
+        opacitySlider = new Slider(0.0, 1.0, objectLayer.getOpacity());
+        opacitySlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            objectLayer.setOpacity(newVal.doubleValue());
+            opacityLabel.setText("Layer Opacity: " + Math.round(newVal.doubleValue() * 100) + "%");
+            renderCurrentPage(); // Мгновенно перерисовываем Canvas с новой прозрачностью скана
+        });
+
+        propertiesContainer.getChildren().addAll(
+                objectInfo,
+                new Separator(),
+                layerLabel,
+                visibleCheckBox,
+                opacityLabel,
+                opacitySlider
+        );
+    }
+
 }
