@@ -20,10 +20,7 @@ public final class LineObject extends BdocObject {
                       double strokeWidth, String strokeColor, String strokePattern,
                       String startCap, String endCap) {
         super(id, layerRef, boundingBoxOf(x1, y1, x2, y2));
-        this.x1 = x1;
-        this.y1 = y1;
-        this.x2 = x2;
-        this.y2 = y2;
+        this.x1 = x1; this.y1 = y1; this.x2 = x2; this.y2 = y2;
         this.strokeWidth = strokeWidth;
         this.strokeColor = strokeColor;
         this.strokePattern = strokePattern != null ? strokePattern : "solid";
@@ -45,7 +42,8 @@ public final class LineObject extends BdocObject {
             @JsonProperty("startCap") String startCap,
             @JsonProperty("endCap") String endCap,
             @JsonProperty("visible") Boolean visible,
-            @JsonProperty("pathData") PathModel pathData) {
+            @JsonProperty("pathData") PathModel pathData,
+            @JsonProperty("transform") TransformModel transform) {
         this(id, layerRef, x1, y1, x2, y2, strokeWidth, strokeColor, strokePattern, startCap, endCap);
         if (visible != null) {
             this.visible = visible;

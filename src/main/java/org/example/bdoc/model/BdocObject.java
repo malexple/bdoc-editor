@@ -35,6 +35,7 @@ public abstract class BdocObject {
     protected final boolean artifact;
     protected final String artifactType;
     protected final TextWrapModel textWrap;
+    protected final TransformModel transform;
 
     // Произвольный контур (маска, кастомная форма VectorShape). Не связан с
     // textWrap.pathData — то поле описывает контур обтекания текста вокруг
@@ -45,17 +46,17 @@ public abstract class BdocObject {
     protected final PathModel pathData;
 
     protected BdocObject(String id, String layerRef, Geometry geometry) {
-        this(id, layerRef, geometry, null, null, true, null, null, false, false, null, null, null);
+        this(id, layerRef, geometry, null, null, true, null, null, false, false, null, null, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
                          String masterSourceId, Set<String> overriddenProperties) {
-        this(id, layerRef, geometry, masterSourceId, overriddenProperties, true, null, null, false, false, null, null, null);
+        this(id, layerRef, geometry, masterSourceId, overriddenProperties, true, null, null, false, false, null, null, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
                          String masterSourceId, Set<String> overriddenProperties, Boolean visible) {
-        this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible, null, null, false, false, null, null, null);
+        this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible, null, null, false, false, null, null, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
@@ -63,7 +64,7 @@ public abstract class BdocObject {
                          Geometry clipGeometry, String maskRef, Boolean mask,
                          Boolean artifact, String artifactType, TextWrapModel textWrap) {
         this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
-                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, null);
+                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
@@ -71,6 +72,15 @@ public abstract class BdocObject {
                          Geometry clipGeometry, String maskRef, Boolean mask,
                          Boolean artifact, String artifactType, TextWrapModel textWrap,
                          PathModel pathData) {
+        this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
+                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData, null);
+    }
+
+    protected BdocObject(String id, String layerRef, Geometry geometry,
+                         String masterSourceId, Set<String> overriddenProperties, Boolean visible,
+                         Geometry clipGeometry, String maskRef, Boolean mask,
+                         Boolean artifact, String artifactType, TextWrapModel textWrap,
+                         PathModel pathData, TransformModel transform) {
         this.id = id;
         this.layerRef = layerRef;
         this.geometry = geometry;
@@ -84,8 +94,10 @@ public abstract class BdocObject {
         this.artifactType = artifactType;
         this.textWrap = textWrap != null ? textWrap : TextWrapModel.disabled();
         this.pathData = pathData;
+        this.transform = transform != null ? transform : TransformModel.identity();
     }
 
+    public TransformModel getTransform() { return transform; }
     public String getId() { return id; }
     public String getLayerRef() { return layerRef; }
     public Geometry getGeometry() { return geometry; }

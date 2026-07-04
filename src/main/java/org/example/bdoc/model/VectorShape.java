@@ -20,6 +20,12 @@ public final class VectorShape extends BdocObject {
         this.shapeType = shapeType;
     }
 
+    /**
+     * shapeType "ellipse" — рендерится по стандартному Geometry (width/height)
+     * через strokeOval/fillOval, дополнительных полей не требует.
+     * shapeType "polygon" — вершины хранятся в pathData (команды "L"),
+     * а Geometry содержит авто-вычисленный bounding box для resize-хендлов.
+     */
     @JsonCreator
     public VectorShape(
             @JsonProperty("id") String id,
@@ -35,9 +41,10 @@ public final class VectorShape extends BdocObject {
             @JsonProperty("artifact") Boolean artifact,
             @JsonProperty("artifactType") String artifactType,
             @JsonProperty("textWrap") TextWrapModel textWrap,
-            @JsonProperty("pathData") PathModel pathData) {
+            @JsonProperty("pathData") PathModel pathData,
+            @JsonProperty("transform") TransformModel transform) {
         super(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
-                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData);
+                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData, transform);
         this.shapeType = shapeType;
     }
 

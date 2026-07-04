@@ -16,19 +16,27 @@ public final class PathModel {
 
     private final String contourType;
     private final List<PathPoint> points;
+    private final String fillRule;
+
+    public PathModel(String contourType, List<PathPoint> points) {
+        this(contourType, points, null);
+    }
 
     @JsonCreator
     public PathModel(
             @JsonProperty("contourType") String contourType,
-            @JsonProperty("points") List<PathPoint> points) {
+            @JsonProperty("points") List<PathPoint> points,
+            @JsonProperty("fillRule") String fillRule) {
         this.contourType = contourType != null ? contourType : "primitive";
         this.points = points != null ? points : List.of();
+        this.fillRule = fillRule != null ? fillRule : "non-zero";
     }
 
     public static PathModel primitive() {
-        return new PathModel("primitive", List.of());
+        return new PathModel("primitive", List.of(), "non-zero");
     }
 
     public String getContourType() { return contourType; }
     public List<PathPoint> getPoints() { return points; }
+    public String getFillRule() { return fillRule; }
 }

@@ -336,7 +336,8 @@ public final class SampleDocuments {
                             PathPoint.moveTo(400.0, 200.0),
                             PathPoint.lineTo(420.0, 240.0),
                             PathPoint.cubicTo(430.0, 250.0, 440.0, 250.0, 440.0, 240.0)
-                    ))
+                    )),
+                    null
             );
 
             VectorShape maskedShape = new VectorShape(
@@ -344,7 +345,8 @@ public final class SampleDocuments {
                     new Geometry(360.0, 200.0, 80.0, 80.0),
                     "rectangle",
                     null, null, true,
-                    null, "mask-star-1", false, false, null, null, null
+                    null, "mask-star-1", false, false, null, null, null,
+                    null
             );
 
             // TableFrame: прайс-лист 2x2, вторая колонка вдвое шире первой
@@ -369,7 +371,8 @@ public final class SampleDocuments {
                     new Geometry(70.0, 780.0, 455.0, 20.0),
                     null, null, null,
                     "master-footer-1", Set.of("geometry"), true,
-                    null, null, false, true, "pagination", null, null
+                    null, null, false, true, "pagination", null, null,
+                    null
             );
 
             List<ReadingSegment> readingOrder4 = List.of(

@@ -19,6 +19,10 @@ import java.util.*;
  */
 public final class BdocIntegrityValidator {
 
+    private static final Set<String> KNOWN_SHAPE_TYPES = java.util.Arrays.stream(ShapeType.values())
+            .map(ShapeType::toJsonValue)
+            .collect(java.util.stream.Collectors.toSet());
+
     private Set<String> collectCharacterStyleIds(StylesCatalog styles) {
         Set<String> ids = new HashSet<>();
         for (CharacterStyle style : styles.getCharacterStyles()) {
@@ -190,8 +194,7 @@ public final class BdocIntegrityValidator {
             errors.add(pageLabel + ": vectorShape '" + shape.getId() +
                     "' has negative geometry width/height");
         }
-        Set<String> knownShapeTypes = Set.of("rectangle", "rounded-rectangle", "line");
-        if (!knownShapeTypes.contains(shape.getShapeType())) {
+        if (!KNOWN_SHAPE_TYPES.contains(shape.getShapeType())) {
             errors.add(pageLabel + ": vectorShape '" + shape.getId() +
                     "' has unknown shapeType '" + shape.getShapeType() + "'");
         }

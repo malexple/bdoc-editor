@@ -30,9 +30,10 @@ public final class Group extends BdocObject {
             @JsonProperty("artifact") Boolean artifact,
             @JsonProperty("artifactType") String artifactType,
             @JsonProperty("textWrap") TextWrapModel textWrap,
-            @JsonProperty("pathData") PathModel pathData) {
+            @JsonProperty("pathData") PathModel pathData,
+            @JsonProperty("transform") TransformModel transform) {
         super(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
-                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData);
+                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData, transform);
         this.childObjectIds = childObjectIds != null ? childObjectIds : List.of();
     }
 
