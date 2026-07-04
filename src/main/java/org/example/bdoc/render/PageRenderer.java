@@ -3,6 +3,7 @@ package org.example.bdoc.render;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.image.Image;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.FillRule;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextAlignment;
@@ -116,6 +117,8 @@ public class PageRenderer {
         CharacterStyleResolver characterStyleResolver = new CharacterStyleResolver(document.getStyles());
 
         gc.setGlobalAlpha(layer.getOpacity());
+        gc.save();
+        applyTransform(gc, object);
         try {
             if (object instanceof VectorShape shape) {
                 renderShape(gc, shape);
@@ -130,13 +133,14 @@ public class PageRenderer {
             } else if (object instanceof TableFrame table) {
                 renderTableFrame(gc, table, document);
             }
-
         } catch (IOException e) {
             throw new RuntimeException("Failed to render object: " + object.getId(), e);
-        } finally {
-            gc.setGlobalAlpha(1.0);
         }
 
+        // Выделение и артефактные рамки рисуются в ТОЙ ЖЕ трансформированной
+        // системе координат — благодаря этому синие хендлы и пунктир артефакта
+        // визуально поворачиваются вместе с объектом. Обратный пересчёт клика
+        // мыши в локальные координаты повёрнутого объекта — задача Этапа 2.
         if (object == selectedObject) {
             Geometry g = object.getGeometry();
             if (object.getType().equals("VectorShape") || object.getType().equals("ImageFrame")) {
@@ -175,8 +179,6 @@ public class PageRenderer {
             gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight());
             gc.setLineDashes(null);
         } else if (isRawMaster) {
-            // Объект унаследован от мастера и ещё не имеет локального override —
-            // рисуем тонкую пунктирную рамку, сигнализирующую "заблокировано от мастера"
             Geometry g = object.getGeometry();
             gc.setStroke(Color.web("#94A3B8"));
             gc.setLineWidth(1.0);
@@ -184,6 +186,32 @@ public class PageRenderer {
             gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight());
             gc.setLineDashes(null);
         }
+
+        gc.restore();
+        gc.setGlobalAlpha(1.0);
+    }
+
+    /**
+     * Накладывает Transform объекта на GraphicsContext перед рисованием.
+     * Поворот и масштаб выполняются вокруг центра bounding box (Geometry),
+     * поэтому сам объект продолжает рисоваться обычными абсолютными
+     * координатами g.getX()/g.getY() — вращение "бесплатно" для остальных
+     * renderXxx-методов, им не нужно знать о Transform вообще.
+     */
+    private void applyTransform(GraphicsContext gc, BdocObject object) {
+        TransformModel t = object.getTransform();
+        if (t == null || t.isIdentity()) {
+            return;
+        }
+        Geometry g = object.getGeometry();
+        double centerX = g.getX() + g.getWidth() / 2.0;
+        double centerY = g.getY() + g.getHeight() / 2.0;
+
+        gc.translate(centerX, centerY);
+        gc.rotate(t.getRotationDegrees());
+        gc.scale(t.getScaleX(), t.getScaleY());
+        gc.translate(-centerX, -centerY);
+        gc.translate(t.getTranslateX(), t.getTranslateY());
     }
 
     private boolean isFromMasterCandidate(BdocObject object) {
@@ -195,6 +223,13 @@ public class PageRenderer {
         gc.setStroke(Color.web("#2F4858"));
         gc.setLineWidth(2.0);
 
+        PathModel pathData = shape.getPathData();
+        if (pathData != null && !pathData.getPoints().isEmpty()
+                && !"primitive".equals(pathData.getContourType())) {
+            renderContour(gc, pathData);
+            return;
+        }
+
         switch (shape.getShapeType()) {
             case "rectangle" -> gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight());
             case "rounded-rectangle" -> gc.strokeRoundRect(
@@ -202,8 +237,43 @@ public class PageRenderer {
                     g.getArcWidth() != null ? g.getArcWidth() : 0,
                     g.getArcHeight() != null ? g.getArcHeight() : 0);
             case "line" -> gc.strokeLine(g.getX(), g.getY(), g.getX() + g.getWidth(), g.getY() + g.getHeight());
+            case "ellipse" -> gc.strokeOval(g.getX(), g.getY(), g.getWidth(), g.getHeight());
+            case "polygon" -> gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight()); // fallback, если pathData пуст
             default -> throw new IllegalArgumentException("Unknown shapeType: " + shape.getShapeType());
         }
+    }
+
+    private void renderContourOrFallback(GraphicsContext gc, VectorShape shape) {
+        PathModel pathData = shape.getPathData();
+        if (pathData == null || pathData.getPoints().isEmpty()) {
+            Geometry g = shape.getGeometry();
+            gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight());
+            return;
+        }
+        renderContour(gc, pathData);
+    }
+
+    /**
+     * Обобщённый рендер контура PathModel: поддерживает несколько суб-контуров
+     * (CompoundPath через повторяющиеся команды "M" в одном points-массиве —
+     * пример "буква О с дыркой"), команды M/L/C и fillRule even-odd/non-zero.
+     * Заливка не включена явно (у VectorShape пока нет отдельного fillColor),
+     * поэтому используется только stroke — включение fill предусмотрено на
+     * будущее без изменения сигнатуры метода.
+     */
+    private void renderContour(GraphicsContext gc, PathModel pathData) {
+        gc.setFillRule("even-odd".equals(pathData.getFillRule()) ? FillRule.EVEN_ODD : FillRule.NON_ZERO);
+        gc.beginPath();
+        for (PathPoint p : pathData.getPoints()) {
+            switch (p.getCommand()) {
+                case "M" -> gc.moveTo(p.getX(), p.getY());
+                case "L" -> gc.lineTo(p.getX(), p.getY());
+                case "C" -> gc.bezierCurveTo(p.getX1(), p.getY1(), p.getX2(), p.getY2(), p.getX(), p.getY());
+                default -> { /* неизвестная команда — игнорируем, не роняем рендер */ }
+            }
+        }
+        gc.closePath();
+        gc.stroke();
     }
 
     private void renderHeaderFooterRule(GraphicsContext gc, HeaderFooterRule rule) {

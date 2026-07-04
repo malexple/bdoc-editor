@@ -60,6 +60,9 @@ public class BdocEditorApp extends Application {
     /** Узел дерева: либо страница, либо слой, либо объект. */
     private enum NodeKind { DOCUMENT, PAGE, LAYER, OBJECT }
 
+    private PathModel dragStartPathData = null;
+    private Geometry dragStartPathGeometry = null;
+
     private static final class TreeNodeData {
         final NodeKind kind;
         final int pageIndex;
@@ -152,8 +155,9 @@ public class BdocEditorApp extends Application {
 
                 if (currentTool == DtpTool.SELECTION && selectedObject != null) {
                     Geometry g = selectedObject.getGeometry();
-                    double x = e.getX();
-                    double y = e.getY();
+                    double[] local = toLocalPoint(e.getX(), e.getY(), selectedObject);
+                    double x = local[0];
+                    double y = local[1];
 
                     double[][] handles = {
                             {g.getX(), g.getY()},
@@ -177,6 +181,10 @@ public class BdocEditorApp extends Application {
                             objectInitialY = gg.getY();
                             initialWidth = gg.getWidth();
                             initialHeight = gg.getHeight();
+
+                            dragStartPathData = selectedObject.getPathData();
+                            dragStartPathGeometry = gg.copy();
+
                             statusLabel.setText("Resizing object from corner: " + i);
                             return;
                         }
@@ -190,10 +198,11 @@ public class BdocEditorApp extends Application {
                 BdocObject found = null;
                 for (int i = effectiveObjects.size() - 1; i >= 0; i--) {
                     BdocObject obj = effectiveObjects.get(i);
-                    if (!obj.isVisible() || obj.isArtifact()) continue;   // ← добавили || obj.isArtifact()
+                    if (!obj.isVisible() || obj.isArtifact()) continue;
                     Geometry g = obj.getGeometry();
-                    if (e.getX() >= g.getX() && e.getX() <= g.getX() + g.getWidth() &&
-                            e.getY() >= g.getY() && e.getY() <= g.getY() + g.getHeight()) {
+                    double[] local = toLocalPoint(e.getX(), e.getY(), obj);
+                    if (local[0] >= g.getX() && local[0] <= g.getX() + g.getWidth() &&
+                            local[1] >= g.getY() && local[1] <= g.getY() + g.getHeight()) {
                         found = obj;
                         break;
                     }
@@ -208,6 +217,8 @@ public class BdocEditorApp extends Application {
                         dragStartY = e.getY();
                         objectInitialX = selectedObject.getGeometry().getX();
                         objectInitialY = selectedObject.getGeometry().getY();
+                        dragStartPathData = selectedObject.getPathData();
+                        dragStartPathGeometry = selectedObject.getGeometry().copy();
                         boolean fromMaster = pageRenderer.isRawMasterObject(selectedObject, masterPage);
                         statusLabel.setText((fromMaster ? "Selected (master-locked): " : "Selected: ") + selectedObject.getId());
                         updatePropertiesPane(page, masterPage, selectedObject);
@@ -234,8 +245,9 @@ public class BdocEditorApp extends Application {
         canvas.setOnMouseDragged(e -> {
             if (selectedObject == null) return;
 
+            PageModel page;
             try {
-                PageModel page = document.loadPage(currentPageIndex);
+                page = document.loadPage(currentPageIndex);
                 MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
 
                 if (!isResizing && pageRenderer.isRawMasterObject(selectedObject, masterPage)) {
@@ -291,10 +303,22 @@ public class BdocEditorApp extends Application {
                         }
                     }
                 }
+
+                if (dragStartPathData != null && !dragStartPathData.getPoints().isEmpty()
+                        && !"primitive".equals(dragStartPathData.getContourType())) {
+                    PathModel rescaled = rescalePathData(dragStartPathData, dragStartPathGeometry, g);
+                    selectedObject = replacePathData(page, selectedObject, rescaled);
+                }
                 renderCurrentPage();
             } else if (currentTool == DtpTool.SELECTION) {
                 g.setX(objectInitialX + deltaX);
                 g.setY(objectInitialY + deltaY);
+
+                if (dragStartPathData != null && !dragStartPathData.getPoints().isEmpty()
+                        && !"primitive".equals(dragStartPathData.getContourType())) {
+                    PathModel rescaled = rescalePathData(dragStartPathData, dragStartPathGeometry, g);
+                    selectedObject = replacePathData(page, selectedObject, rescaled);
+                }
                 renderCurrentPage();
             }
         });
@@ -302,6 +326,8 @@ public class BdocEditorApp extends Application {
         canvas.setOnMouseReleased(e -> {
             isResizing = false;
             resizeHandleIndex = -1;
+            dragStartPathData = null;
+            dragStartPathGeometry = null;
         });
 
         BorderPane root = new BorderPane();
@@ -834,5 +860,100 @@ public class BdocEditorApp extends Application {
                 }
             }
         }
+    }
+
+    /**
+     * Переводит координаты клика мыши (screen/page space) в локальную систему
+     * координат объекта, отменяя его Transform (translate → rotate → scale
+     * вокруг центра bounding box). Без этого хит-тест хендлов и AABB объекта
+     * не совпадает с тем, что реально нарисовано повёрнутым/масштабированным
+     * на canvas — PageRenderer.applyTransform() применяет прямое преобразование,
+     * а этот метод — его точную инверсию.
+     */
+    private double[] toLocalPoint(double screenX, double screenY, BdocObject object) {
+        TransformModel t = object.getTransform();
+        if (t == null || t.isIdentity()) {
+            return new double[]{screenX, screenY};
+        }
+        Geometry g = object.getGeometry();
+        double centerX = g.getX() + g.getWidth() / 2.0;
+        double centerY = g.getY() + g.getHeight() / 2.0;
+
+        double px = screenX - t.getTranslateX();
+        double py = screenY - t.getTranslateY();
+
+        px -= centerX;
+        py -= centerY;
+
+        double rad = Math.toRadians(-t.getRotationDegrees());
+        double cos = Math.cos(rad);
+        double sin = Math.sin(rad);
+        double rx = px * cos - py * sin;
+        double ry = px * sin + py * cos;
+
+        rx /= t.getScaleX();
+        ry /= t.getScaleY();
+
+        return new double[]{rx + centerX, ry + centerY};
+    }
+
+    /**
+     * Пересчитывает точки PathModel (полигон/bezier) пропорционально
+     * изменению bounding box: старая точка проецируется как доля внутри
+     * oldBox, затем эта же доля применяется к newBox. Работает и для чистого
+     * переноса (move), и для resize — при move oldBox/newBox имеют
+     * одинаковый размер, но разные x/y, и формула превращается в обычный
+     * сдвиг. Сознательно НЕ учитывает Transform.rotationDegrees — сочетание
+     * "повёрнутый объект произвольной формы + resize" отложено на Этап 2.
+     */
+    private PathModel rescalePathData(PathModel original, Geometry oldBox, Geometry newBox) {
+        double oldW = oldBox.getWidth();
+        double oldH = oldBox.getHeight();
+        double scaleX = oldW != 0 ? newBox.getWidth() / oldW : 1.0;
+        double scaleY = oldH != 0 ? newBox.getHeight() / oldH : 1.0;
+
+        List<PathPoint> rescaled = new java.util.ArrayList<>();
+        for (PathPoint p : original.getPoints()) {
+            double nx = newBox.getX() + (p.getX() - oldBox.getX()) * scaleX;
+            double ny = newBox.getY() + (p.getY() - oldBox.getY()) * scaleY;
+            if ("C".equals(p.getCommand())) {
+                double nx1 = newBox.getX() + (p.getX1() - oldBox.getX()) * scaleX;
+                double ny1 = newBox.getY() + (p.getY1() - oldBox.getY()) * scaleY;
+                double nx2 = newBox.getX() + (p.getX2() - oldBox.getX()) * scaleX;
+                double ny2 = newBox.getY() + (p.getY2() - oldBox.getY()) * scaleY;
+                rescaled.add(PathPoint.cubicTo(nx1, ny1, nx2, ny2, nx, ny));
+            } else if ("L".equals(p.getCommand())) {
+                rescaled.add(PathPoint.lineTo(nx, ny));
+            } else {
+                rescaled.add(PathPoint.moveTo(nx, ny));
+            }
+        }
+        return new PathModel(original.getContourType(), rescaled, original.getFillRule());
+    }
+
+    /**
+     * PathModel иммутабелен, поэтому единственный способ "подвинуть" контур —
+     * пересобрать весь VectorShape с новым PathModel и заменить его в
+     * page.getObjects() по индексу. На Этапе 1.4 поддержана только VectorShape —
+     * TextFrame/ImageFrame с pathData (маски) пока не двигаются вместе с
+     * Geometry, это расширение оставлено на будущий шаг.
+     */
+    private BdocObject replacePathData(PageModel page, BdocObject object, PathModel newPathData) {
+        if (!(object instanceof VectorShape vs)) {
+            return object;
+        }
+        VectorShape updated = new VectorShape(
+                vs.getId(), vs.getLayerRef(), vs.getGeometry(), vs.getShapeType(),
+                vs.getMasterSourceId(), vs.getOverriddenProperties(), vs.isVisible(),
+                vs.getClipGeometry(), vs.getMaskRef(), vs.isMask(), vs.isArtifact(),
+                vs.getArtifactType(), vs.getTextWrap(), newPathData, vs.getTransform()
+        );
+        for (int i = 0; i < page.getObjects().size(); i++) {
+            if (page.getObjects().get(i).getId().equals(vs.getId())) {
+                page.getObjects().set(i, updated);
+                break;
+            }
+        }
+        return updated;
     }
 }

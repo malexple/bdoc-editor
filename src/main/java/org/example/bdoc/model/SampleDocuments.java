@@ -381,14 +381,55 @@ public final class SampleDocuments {
                     new ReadingSegment(3, "table-info-1", "table")
             );
 
+            // Ellipse: рисуется по обычной Geometry (width/height), без pathData —
+            // рендерер вызывает gc.strokeOval() напрямую.
+            VectorShape ellipseDemo = new VectorShape(
+                    "shape-ellipse-1", "layer-decor",
+                    new Geometry(70.0, 480.0, 160.0, 100.0),
+                    "ellipse"
+            );
+
+            // Rotated rectangle: обычный прямоугольник, но с Transform.rotationDegrees=30.
+            // Geometry остаётся "невращённым" bounding box (280,480,120,80) — поворот
+            // применяется PageRenderer.applyTransform() вокруг центра этого бокса.
+            VectorShape rotatedRectDemo = new VectorShape(
+                    "shape-rotated-1", "layer-decor",
+                    new Geometry(280.0, 480.0, 120.0, 80.0),
+                    "rectangle",
+                    null, null, true,
+                    null, null, false, false, null, null, null,
+                    new TransformModel(0.0, 0.0, 30.0, 1.0, 1.0)
+            );
+
+            // Polygon (пятиугольник): вершины хранятся в pathData через команды "L",
+            // а Geometry содержит авто-вычисленный bounding box вершин — именно так,
+            // как договорились: полигон не получает собственных полей в VectorShape.
+            VectorShape polygonDemo = new VectorShape(
+                    "shape-polygon-1", "layer-decor",
+                    new Geometry(413.0, 510.0, 94.0, 90.0),
+                    "polygon",
+                    null, null, true,
+                    null, null, false, false, null, null,
+                    new PathModel("polygon", List.of(
+                            PathPoint.moveTo(460.0, 510.0),
+                            PathPoint.lineTo(507.0, 545.0),
+                            PathPoint.lineTo(489.0, 600.0),
+                            PathPoint.lineTo(431.0, 600.0),
+                            PathPoint.lineTo(413.0, 545.0)
+                    )),
+                    null
+            );
             PageModel page4 = new PageModel(
                     "page-4", 4, 595.0, 842.0, "pt", "master-A",
                     List.of(decorLayer4, textLayer4, footerLayer4),
                     List.of(headingFrame4, divider4, iconDecor, captionFrame, cardGroup,
-                            maskStar, maskedShape, priceTable, footerArtifact4),
+                            maskStar, maskedShape, priceTable,
+                            ellipseDemo, rotatedRectDemo, polygonDemo,
+                            footerArtifact4),
                     readingOrder4
             );
             writer.writePage(page4);
+
 
             StylesCatalog styles = new StylesCatalog(
                     List.of(bodyStyle, headingStyle, footerStyle, quoteStyle),
