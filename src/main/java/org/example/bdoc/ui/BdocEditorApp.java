@@ -21,8 +21,9 @@ import org.example.bdoc.render.PageRenderer;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class BdocEditorApp extends Application {
 
@@ -37,7 +38,6 @@ public class BdocEditorApp extends Application {
     private ListView<String> documentTree;
     private Label statusLabel;
 
-    // Состояние интерактивности и инструментов
     private DtpTool currentTool = DtpTool.SELECTION;
     private BdocObject selectedObject = null;
     private double dragStartX = 0;
@@ -45,20 +45,16 @@ public class BdocEditorApp extends Application {
     private double objectInitialX = 0;
     private double objectInitialY = 0;
 
-    // Компоненты панели свойств справа
     private VBox propertiesContainer;
     private Slider opacitySlider;
     private CheckBox visibleCheckBox;
     private TextArea storyTextArea;
 
-    // Состояние изменения размеров (Resize)
     private boolean isResizing = false;
-    private int resizeHandleIndex = -1; // 0: верхний-левый, 1: верхний-правый, 2: нижний-левый, 3: нижний-правый
+    private int resizeHandleIndex = -1;
     private double initialWidth = 0;
     private double initialHeight = 0;
-    private final double HANDLE_SIZE = 6.0; // Должно совпадать с размером квадратиков в PageRenderer
-
-
+    private final double HANDLE_SIZE = 6.0;
 
     @Override
     public void start(Stage stage) {
@@ -75,7 +71,6 @@ public class BdocEditorApp extends Application {
         canvasPane.setPadding(new Insets(24));
         canvasPane.setStyle("-fx-background-color: #CBD5E1;");
 
-        // --- ПАНЕЛЬ СВОЙСТВ (Справа) ---
         BorderPane propertiesPane = new BorderPane();
         propertiesPane.setPadding(new Insets(12));
         propertiesPane.setPrefWidth(240);
@@ -91,7 +86,6 @@ public class BdocEditorApp extends Application {
         splitPane.setDividerPositions(0.18, 0.78);
         statusLabel = new Label("No document loaded");
 
-        // --- КНОПКИ ИНСТРУМЕНТОВ (DTP Tools) ---
         ToggleGroup toolGroup = new ToggleGroup();
         ToggleButton selectToolBtn = new ToggleButton("🏹 Select");
         selectToolBtn.setToggleGroup(toolGroup);
@@ -112,56 +106,58 @@ public class BdocEditorApp extends Application {
         ToolBar toolBar = new ToolBar(
                 new Label("BDoc Editor v0.1"),
                 new Separator(),
-                selectToolBtn, textToolBtn, // Панель инструментов верстки
+                selectToolBtn, textToolBtn,
                 new Separator(),
                 newSampleBtn, openBtn, saveAsBtn
         );
 
-        // --- ИНТЕРАКТИВНАЯ ЛОГИКА МЫШИ НА CANVAS ---
         canvas.setOnMousePressed(e -> {
             if (document == null) return;
             try {
                 PageModel page = document.loadPage(currentPageIndex);
+                MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
 
-                // --- 1. ПРОВЕРКА НА КЛИК ПО УГЛОВЫМ МАРКЕРАМ (RESIZE) ---
                 if (currentTool == DtpTool.SELECTION && selectedObject != null) {
                     Geometry g = selectedObject.getGeometry();
                     double x = e.getX();
                     double y = e.getY();
 
-                    // Координаты углов с учётом размера маркера
                     double[][] handles = {
-                            {g.getX(), g.getY()},                                 // 0: Топ-Лево
-                            {g.getX() + g.getWidth(), g.getY()},                  // 1: Топ-Право
-                            {g.getX(), g.getY() + g.getHeight()},                 // 2: Низ-Лево
-                            {g.getX() + g.getWidth(), g.getY() + g.getHeight()}   // 3: Низ-Право
+                            {g.getX(), g.getY()},
+                            {g.getX() + g.getWidth(), g.getY()},
+                            {g.getX(), g.getY() + g.getHeight()},
+                            {g.getX() + g.getWidth(), g.getY() + g.getHeight()}
                     };
 
                     for (int i = 0; i < handles.length; i++) {
                         if (x >= handles[i][0] - HANDLE_SIZE && x <= handles[i][0] + HANDLE_SIZE &&
                                 y >= handles[i][1] - HANDLE_SIZE && y <= handles[i][1] + HANDLE_SIZE) {
+
+                            // Резать по мастеру можно только через материализованный override
+                            selectedObject = materializeOverrideIfNeeded(page, masterPage, selectedObject);
+
                             isResizing = true;
                             resizeHandleIndex = i;
+                            Geometry gg = selectedObject.getGeometry();
                             dragStartX = x;
                             dragStartY = y;
-                            objectInitialX = g.getX();
-                            objectInitialY = g.getY();
-                            initialWidth = g.getWidth();
-                            initialHeight = g.getHeight();
+                            objectInitialX = gg.getX();
+                            objectInitialY = gg.getY();
+                            initialWidth = gg.getWidth();
+                            initialHeight = gg.getHeight();
                             statusLabel.setText("Resizing object from corner: " + i);
-                            return; // Прерываем метод, обычное выделение делать не нужно
+                            return;
                         }
                     }
                 }
 
-                // --- 2. ОБЫЧНЫЙ ПОИСК ОБЪЕКТА ДЛЯ ВЫДЕЛЕНИЯ / ПЕРЕМЕЩЕНИЯ ---
                 isResizing = false;
                 resizeHandleIndex = -1;
 
+                List<BdocObject> effectiveObjects = pageRenderer.resolveEffectiveObjects(page, masterPage);
                 BdocObject found = null;
-                List<BdocObject> objects = page.getObjects();
-                for (int i = objects.size() - 1; i >= 0; i--) {
-                    BdocObject obj = objects.get(i);
+                for (int i = effectiveObjects.size() - 1; i >= 0; i--) {
+                    BdocObject obj = effectiveObjects.get(i);
                     Geometry g = obj.getGeometry();
                     if (e.getX() >= g.getX() && e.getX() <= g.getX() + g.getWidth() &&
                             e.getY() >= g.getY() && e.getY() <= g.getY() + g.getHeight()) {
@@ -178,14 +174,14 @@ public class BdocEditorApp extends Application {
                         dragStartY = e.getY();
                         objectInitialX = selectedObject.getGeometry().getX();
                         objectInitialY = selectedObject.getGeometry().getY();
-                        statusLabel.setText("Selected: " + selectedObject.getId());
-                        updatePropertiesPane(page, selectedObject);
+                        boolean fromMaster = pageRenderer.isRawMasterObject(selectedObject, masterPage);
+                        statusLabel.setText((fromMaster ? "Selected (master-locked): " : "Selected: ") + selectedObject.getId());
+                        updatePropertiesPane(page, masterPage, selectedObject);
                     } else {
                         propertiesContainer.getChildren().clear();
                     }
                     renderCurrentPage();
-                }
-                else if (currentTool == DtpTool.TEXT) {
+                } else if (currentTool == DtpTool.TEXT) {
                     if (selectedObject instanceof TextFrame textFrame) {
                         StoryModel story = document.getStory(textFrame.getStoryRef());
                         statusLabel.setText("Editing Story: " + textFrame.getStoryRef());
@@ -204,14 +200,28 @@ public class BdocEditorApp extends Application {
         canvas.setOnMouseDragged(e -> {
             if (selectedObject == null) return;
 
+            try {
+                PageModel page = document.loadPage(currentPageIndex);
+                MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
+
+                // Первое движение по "сырому" объекту мастера — материализуем override
+                if (!isResizing && pageRenderer.isRawMasterObject(selectedObject, masterPage)) {
+                    selectedObject = materializeOverrideIfNeeded(page, masterPage, selectedObject);
+                    objectInitialX = selectedObject.getGeometry().getX();
+                    objectInitialY = selectedObject.getGeometry().getY();
+                }
+            } catch (IOException ex) {
+                showError("Drag Error", ex.getMessage());
+                return;
+            }
+
             double deltaX = e.getX() - dragStartX;
             double deltaY = e.getY() - dragStartY;
             Geometry g = selectedObject.getGeometry();
 
-            // --- ЛОГИКА ИЗМЕНЕНИЯ РАЗМЕРОВ (RESIZE) ---
             if (isResizing) {
                 switch (resizeHandleIndex) {
-                    case 0 -> { // Топ-Лево: меняются и координаты, и размеры
+                    case 0 -> {
                         double newWidth = initialWidth - deltaX;
                         double newHeight = initialHeight - deltaY;
                         if (newWidth > 10 && newHeight > 10) {
@@ -221,7 +231,7 @@ public class BdocEditorApp extends Application {
                             g.setHeight(newHeight);
                         }
                     }
-                    case 1 -> { // Топ-Право: меняется координата Y, ширина и высота
+                    case 1 -> {
                         double newWidth = initialWidth + deltaX;
                         double newHeight = initialHeight - deltaY;
                         if (newWidth > 10 && newHeight > 10) {
@@ -230,7 +240,7 @@ public class BdocEditorApp extends Application {
                             g.setHeight(newHeight);
                         }
                     }
-                    case 2 -> { // Низ-Лево: меняется координата X, ширина и высота
+                    case 2 -> {
                         double newWidth = initialWidth - deltaX;
                         double newHeight = initialHeight + deltaY;
                         if (newWidth > 10 && newHeight > 10) {
@@ -239,7 +249,7 @@ public class BdocEditorApp extends Application {
                             g.setHeight(newHeight);
                         }
                     }
-                    case 3 -> { // Низ-Право: меняются только ширина и высота (самый частый кейс)
+                    case 3 -> {
                         double newWidth = initialWidth + deltaX;
                         double newHeight = initialHeight + deltaY;
                         if (newWidth > 10 && newHeight > 10) {
@@ -248,10 +258,8 @@ public class BdocEditorApp extends Application {
                         }
                     }
                 }
-                renderCurrentPage(); // Мгновенный пересчет переноса строк внутри фрейма при изменении ширины!
-            }
-            // --- ОБЫЧНОЕ ПЕРЕМЕЩЕНИЕ (DRAG) ---
-            else if (currentTool == DtpTool.SELECTION) {
+                renderCurrentPage();
+            } else if (currentTool == DtpTool.SELECTION) {
                 g.setX(objectInitialX + deltaX);
                 g.setY(objectInitialY + deltaY);
                 renderCurrentPage();
@@ -276,6 +284,53 @@ public class BdocEditorApp extends Application {
         loadInitialSample(stage);
     }
 
+    /**
+     * Если object — "сырой" объект мастера без локального override, создаёт
+     * его копию с masterSourceId и overriddenProperties={"geometry"},
+     * добавляет в page.getObjects() и возвращает копию. Если object уже
+     * является override или страница не привязана к мастеру — возвращает
+     * object без изменений.
+     */
+    private BdocObject materializeOverrideIfNeeded(PageModel page, MasterPage masterPage, BdocObject object) {
+        if (masterPage == null || object.isMasterOverride()) {
+            return object;
+        }
+        if (masterPage.findObject(object.getId()) == null) {
+            return object;
+        }
+
+        Set<String> overridden = new HashSet<>();
+        overridden.add("geometry");
+        Geometry clonedGeometry = object.getGeometry().copy();
+
+        BdocObject override;
+        if (object instanceof TextFrame tf) {
+            override = new TextFrame(tf.getId(), tf.getLayerRef(), clonedGeometry, tf.getStoryRef(), tf.getId(), overridden);
+        } else if (object instanceof ImageFrame imf) {
+            override = new ImageFrame(imf.getId(), imf.getLayerRef(), clonedGeometry, imf.getAssetRef(), imf.getId(), overridden);
+        } else if (object instanceof VectorShape vs) {
+            override = new VectorShape(vs.getId(), vs.getLayerRef(), clonedGeometry, vs.getShapeType(), vs.getId(), overridden);
+        } else if (object instanceof HeaderFooterRule hfr) {
+            override = new HeaderFooterRule(
+                    hfr.getId(), hfr.getLayerRef(), clonedGeometry,
+                    hfr.getZone(), hfr.getTextTemplate(), hfr.getStyleRef(),
+                    hfr.getId(), overridden);
+        } else {
+            return object;
+        }
+
+        page.getObjects().add(override);
+        return override;
+    }
+
+    /** Удаляет локальный override и возвращает исходный объект мастера. */
+    private BdocObject restoreToMaster(PageModel page, MasterPage masterPage, BdocObject overrideObject) {
+        if (masterPage == null || !overrideObject.isMasterOverride()) {
+            return overrideObject;
+        }
+        page.getObjects().removeIf(o -> o.getId().equals(overrideObject.getId()) && o.isMasterOverride());
+        return masterPage.findObject(overrideObject.getMasterSourceId());
+    }
 
     private void loadInitialSample(Stage stage) {
         try {
@@ -330,10 +385,7 @@ public class BdocEditorApp extends Application {
         }
         try {
             statusLabel.setText("Re-packing BDoc archive with new layout and text...");
-
-            // Вызываем метод полной компиляции измененных данных в ZIP+CBOR контейнер
             saveDocument(document, target);
-
             statusLabel.setText("Saved to " + target.getAbsolutePath() + " [Pack OK]");
         } catch (IOException ex) {
             showError("Save error", "Failed to compile document package: " + ex.getMessage());
@@ -412,10 +464,9 @@ public class BdocEditorApp extends Application {
         alert.showAndWait();
     }
 
-    private void updatePropertiesPane(PageModel page, BdocObject object) {
+    private void updatePropertiesPane(PageModel page, MasterPage masterPage, BdocObject object) {
         propertiesContainer.getChildren().clear();
 
-        // Находим слой, которому принадлежит объект
         LayerModel objectLayer = page.getLayers().stream()
                 .filter(l -> l.getId().equals(object.getLayerRef()))
                 .findFirst()
@@ -429,7 +480,6 @@ public class BdocEditorApp extends Application {
         Label layerLabel = new Label("Layer: " + objectLayer.getName() + " (" + objectLayer.getRole() + ")");
         layerLabel.setStyle("-fx-font-weight: bold; -fx-padding: 10 0 0 0;");
 
-        // Чекбокс видимости слоя
         visibleCheckBox = new CheckBox("Layer Visible");
         visibleCheckBox.setSelected(objectLayer.isVisible());
         visibleCheckBox.setOnAction(e -> {
@@ -437,13 +487,12 @@ public class BdocEditorApp extends Application {
             renderCurrentPage();
         });
 
-        // Ползунок прозрачности слоя (критично для реставрации сканов)
         Label opacityLabel = new Label("Layer Opacity: " + Math.round(objectLayer.getOpacity() * 100) + "%");
         opacitySlider = new Slider(0.0, 1.0, objectLayer.getOpacity());
         opacitySlider.valueProperty().addListener((obs, oldVal, newVal) -> {
             objectLayer.setOpacity(newVal.doubleValue());
             opacityLabel.setText("Layer Opacity: " + Math.round(newVal.doubleValue() * 100) + "%");
-            renderCurrentPage(); // Мгновенно перерисовываем Canvas с новой прозрачностью скана
+            renderCurrentPage();
         });
 
         propertiesContainer.getChildren().addAll(
@@ -454,6 +503,27 @@ public class BdocEditorApp extends Application {
                 opacityLabel,
                 opacitySlider
         );
+
+        // Кнопка "Сбросить к параметрам мастера" — только для override-объектов
+        if (object.isMasterOverride()) {
+            Label masterInfo = new Label("Linked to master: " + object.getMasterSourceId());
+            masterInfo.setStyle("-fx-text-fill: #B45309; -fx-font-size: 11px; -fx-padding: 8 0 0 0;");
+
+            Button restoreBtn = new Button("Restore to Master");
+            restoreBtn.setOnAction(e -> {
+                BdocObject restored = restoreToMaster(page, masterPage, object);
+                selectedObject = restored;
+                statusLabel.setText("Restored to master: " + (restored != null ? restored.getId() : "?"));
+                renderCurrentPage();
+                if (restored != null) {
+                    updatePropertiesPane(page, masterPage, restored);
+                } else {
+                    propertiesContainer.getChildren().clear();
+                }
+            });
+
+            propertiesContainer.getChildren().addAll(masterInfo, restoreBtn);
+        }
     }
 
     private void updateTextEditorPane(TextFrame textFrame, StoryModel story) {
@@ -469,26 +539,17 @@ public class BdocEditorApp extends Application {
         storyTextArea.setPrefHeight(300);
         storyTextArea.setWrapText(true);
 
-        // Загружаем текущий текст истории в поле ввода
         if (story != null) {
             storyTextArea.setText(story.getJoinedText());
         }
 
-        // Слушатель изменений: как только пользователь вводит символ или удаляет мусор/рекламу,
-        // данные сохраняются в StoryModel в памяти, и холст мгновенно обновляется
         storyTextArea.textProperty().addListener((obs, oldText, newText) -> {
             if (story != null) {
-                // Очищаем старые параграфы и записываем обновленный текст
                 story.getParagraphs().clear();
-
-                // Разбиваем введенный текст по строкам, чтобы восстановить структуру параграфов
                 String[] lines = newText.split("\n");
                 for (String line : lines) {
-                    // Создаем чистый параграф (роль body, стиль по умолчанию body-text)
                     story.getParagraphs().add(new Paragraph("body", "body-text", line));
                 }
-
-                // Мгновенно пересчитываем Layout и перерисовываем Canvas через TextWrapper
                 renderCurrentPage();
             }
         });
@@ -510,7 +571,6 @@ public class BdocEditorApp extends Application {
         ObjectMapper jsonMapper = new ObjectMapper();
         CBORMapper cborMapper = new CBORMapper();
 
-        // Настройки для создания нового ZIP-архива средствами Java
         java.util.Map<String, String> env = new java.util.HashMap<>();
         env.put("create", "true");
 
@@ -521,12 +581,11 @@ public class BdocEditorApp extends Application {
         java.net.URI uri = java.net.URI.create("jar:file:" + targetFile.toURI().getPath());
 
         try (java.nio.file.FileSystem zipfs = java.nio.file.FileSystems.newFileSystem(uri, env)) {
-            // 1. Создаем внутреннюю структуру пакета BDoc
             java.nio.file.Files.createDirectories(zipfs.getPath("/pages"));
             java.nio.file.Files.createDirectories(zipfs.getPath("/stories"));
             java.nio.file.Files.createDirectories(zipfs.getPath("/resources"));
+            java.nio.file.Files.createDirectories(zipfs.getPath("/templates"));
 
-            // 2. Сериализуем текстовые истории (Stories), которые пользователь очистил от рекламы
             for (String storyId : handle.getStoryIds()) {
                 StoryModel story = handle.getStory(storyId);
                 if (story != null) {
@@ -537,29 +596,33 @@ public class BdocEditorApp extends Application {
                 }
             }
 
-            // 3. Сериализуем страницы (Pages) в бинарный CBOR с обновленной геометрией из памяти
-            // Пробегаемся по всем индексам, которые вернул дескриптор
             for (Integer index : handle.getPageIndices()) {
-                PageModel page = handle.loadPage(index); // Использует кэш handle, сохраняя правки Resize
-
-                // Нам нужно определить имя файла страницы.
-                // Для совместимости с дефолтным сэмплом используем шаблон "page-X.cbor"
+                PageModel page = handle.loadPage(index);
                 java.nio.file.Path pagePath = zipfs.getPath("/pages/page-" + index + ".cbor");
                 try (java.io.OutputStream os = java.nio.file.Files.newOutputStream(pagePath)) {
                     cborMapper.writeValue(os, page);
                 }
             }
 
-            // 4. Формируем и сохраняем manifest.json
-            // Так как manifest в DocumentHandle скрыт (private), мы собираем его динамически
-            // на основе метаданных и существующих индексов из открытого handle
+            // Шаблоны мастер-страниц — новое в этой версии сохранения
+            java.util.List<java.util.Map<String, Object>> templatesList = new java.util.ArrayList<>();
+            for (MasterPage masterPage : handle.getTemplates().getMasterPages()) {
+                java.nio.file.Path templatePath = zipfs.getPath("/templates/" + masterPage.getId() + ".json");
+                try (java.io.OutputStream os = java.nio.file.Files.newOutputStream(templatePath)) {
+                    jsonMapper.writerWithDefaultPrettyPrinter().writeValue(os, masterPage);
+                }
+                java.util.Map<String, Object> tEntry = new java.util.HashMap<>();
+                tEntry.put("id", masterPage.getId());
+                tEntry.put("file", "templates/" + masterPage.getId() + ".json");
+                templatesList.add(tEntry);
+            }
+
             java.util.Map<String, Object> manifestMap = new java.util.HashMap<>();
             manifestMap.put("id", handle.getId());
             manifestMap.put("title", handle.getTitle());
             manifestMap.put("documentType", handle.getDocumentType());
             manifestMap.put("version", "0.1-composite");
 
-            // Формируем список страниц для манифеста
             java.util.List<java.util.Map<String, Object>> pagesList = new java.util.ArrayList<>();
             for (Integer index : handle.getPageIndices()) {
                 java.util.Map<String, Object> pEntry = new java.util.HashMap<>();
@@ -570,7 +633,6 @@ public class BdocEditorApp extends Application {
             }
             manifestMap.put("pages", pagesList);
 
-            // Формируем список историй для манифеста
             java.util.List<java.util.Map<String, Object>> storiesList = new java.util.ArrayList<>();
             for (String storyId : handle.getStoryIds()) {
                 java.util.Map<String, Object> sEntry = new java.util.HashMap<>();
@@ -579,13 +641,13 @@ public class BdocEditorApp extends Application {
                 storiesList.add(sEntry);
             }
             manifestMap.put("stories", storiesList);
+            manifestMap.put("templates", templatesList);
 
             java.nio.file.Path manifestPath = zipfs.getPath("/manifest.json");
             try (java.io.OutputStream os = java.nio.file.Files.newOutputStream(manifestPath)) {
                 jsonMapper.writerWithDefaultPrettyPrinter().writeValue(os, manifestMap);
             }
 
-            // 5. Перенос каталога стилей (Styles)
             if (handle.getStyles() != null) {
                 java.nio.file.Path stylesPath = zipfs.getPath("/styles.json");
                 try (java.io.OutputStream os = java.nio.file.Files.newOutputStream(stylesPath)) {

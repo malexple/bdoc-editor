@@ -12,6 +12,7 @@ public final class PageModel {
     private final double width;
     private final double height;
     private final String unit;
+    private final String templateRef;
     private final List<LayerModel> layers;
     private final List<BdocObject> objects;
 
@@ -22,6 +23,7 @@ public final class PageModel {
             @JsonProperty("width") double width,
             @JsonProperty("height") double height,
             @JsonProperty("unit") String unit,
+            @JsonProperty("templateRef") String templateRef,
             @JsonProperty("layers") List<LayerModel> layers,
             @JsonProperty("objects") List<BdocObject> objects) {
         this.id = id;
@@ -29,6 +31,7 @@ public final class PageModel {
         this.width = width;
         this.height = height;
         this.unit = unit != null ? unit : "pt";
+        this.templateRef = templateRef;
         this.layers = layers != null ? layers : List.of();
         this.objects = objects != null ? objects : List.of();
     }
@@ -38,6 +41,7 @@ public final class PageModel {
     public double getWidth() { return width; }
     public double getHeight() { return height; }
     public String getUnit() { return unit; }
+    public String getTemplateRef() { return templateRef; }
     public List<LayerModel> getLayers() { return layers; }
     public List<BdocObject> getObjects() { return objects; }
 }

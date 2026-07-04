@@ -3,21 +3,26 @@ package org.example.bdoc.model;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-/**
- * Растровый фрейм. Используется как для иллюстраций,
- * так и как временная подложка-скан оригинала при реставрации.
- */
+import java.util.Set;
+
 public final class ImageFrame extends BdocObject {
 
     private final String assetRef;
+
+    public ImageFrame(String id, String layerRef, Geometry geometry, String assetRef) {
+        super(id, layerRef, geometry);
+        this.assetRef = assetRef;
+    }
 
     @JsonCreator
     public ImageFrame(
             @JsonProperty("id") String id,
             @JsonProperty("layerRef") String layerRef,
             @JsonProperty("geometry") Geometry geometry,
-            @JsonProperty("assetRef") String assetRef) {
-        super(id, layerRef, geometry);
+            @JsonProperty("assetRef") String assetRef,
+            @JsonProperty("masterSourceId") String masterSourceId,
+            @JsonProperty("overriddenProperties") Set<String> overriddenProperties) {
+        super(id, layerRef, geometry, masterSourceId, overriddenProperties);
         this.assetRef = assetRef;
     }
 

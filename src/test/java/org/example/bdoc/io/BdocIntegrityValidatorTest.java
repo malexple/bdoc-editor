@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,7 +27,7 @@ class BdocIntegrityValidatorTest {
 
             LayerModel textLayer = new LayerModel("layer-text", "Text", "text", true, 1.0);
             writer.writePage(new PageModel(
-                    "page-1", 1, 595.0, 842.0, "pt",
+                    "page-1", 1, 595.0, 842.0, "pt", null,
                     List.of(textLayer),
                     List.of(new TextFrame("frame-1", "layer-text",
                             new Geometry(70, 120, 455, 600), "story-1"))
@@ -51,7 +52,7 @@ class BdocIntegrityValidatorTest {
 
             LayerModel textLayer = new LayerModel("layer-text", "Text", "text", true, 1.0);
             writer.writePage(new PageModel(
-                    "page-1", 1, 595.0, 842.0, "pt",
+                    "page-1", 1, 595.0, 842.0, "pt", null,
                     List.of(textLayer),
                     List.of(new TextFrame("frame-1", "layer-text",
                             new Geometry(70, 120, 455, 600), "story-missing"))
@@ -78,7 +79,7 @@ class BdocIntegrityValidatorTest {
 
             LayerModel bgLayer = new LayerModel("layer-bg", "Scan", "background", true, 0.4);
             writer.writePage(new PageModel(
-                    "page-1", 1, 595.0, 842.0, "mm",
+                    "page-1", 1, 595.0, 842.0, "mm", null,
                     List.of(bgLayer),
                     List.of(new ImageFrame("scan-1", "layer-bg",
                             new Geometry(0, 0, 595, 842), "resources/missing.jpg"))
@@ -105,7 +106,7 @@ class BdocIntegrityValidatorTest {
 
             LayerModel textLayer = new LayerModel("layer-text", "Text", "text", true, 1.0);
             writer.writePage(new PageModel(
-                    "page-1", 1, 595.0, 842.0, "pt",
+                    "page-1", 1, 595.0, 842.0, "pt", null,
                     List.of(textLayer),
                     List.of(new TextFrame("frame-1", "layer-missing",
                             new Geometry(70, 120, 455, 600), "story-1"))
@@ -118,6 +119,79 @@ class BdocIntegrityValidatorTest {
             BdocValidationException ex = assertThrows(
                     BdocValidationException.class, () -> validator.validate(handle));
             assertTrue(ex.getErrors().stream().anyMatch(e -> e.contains("layer-missing")));
+        }
+    }
+
+    @Test
+    void missingTemplateRefIsDetected(@TempDir Path tempDir) throws Exception {
+        File file = tempDir.resolve("bad-templateref.bdoc").toFile();
+
+        try (BdocContainerSerializer.Writer writer = serializer.beginWrite(file)) {
+            writer.writeStory(new StoryModel("story-1", List.of(
+                    new Paragraph("body", null, "Текст.")
+            )));
+
+            LayerModel textLayer = new LayerModel("layer-text", "Text", "text", true, 1.0);
+            writer.writePage(new PageModel(
+                    "page-1", 1, 595.0, 842.0, "pt", "master-missing",
+                    List.of(textLayer),
+                    List.of(new TextFrame("frame-1", "layer-text",
+                            new Geometry(70, 120, 455, 600), "story-1"))
+            ));
+
+            writer.finish("doc-1", "Bad Doc", "book", "0.1-composite", "ru-RU", StylesCatalog.empty());
+        }
+
+        try (DocumentHandle handle = serializer.open(file)) {
+            BdocValidationException ex = assertThrows(
+                    BdocValidationException.class, () -> validator.validate(handle));
+            assertTrue(ex.getErrors().stream().anyMatch(e -> e.contains("master-missing")));
+        }
+    }
+
+    @Test
+    void invalidMasterSourceIdIsDetected(@TempDir Path tempDir) throws Exception {
+        File file = tempDir.resolve("bad-mastersourceid.bdoc").toFile();
+
+        try (BdocContainerSerializer.Writer writer = serializer.beginWrite(file)) {
+            writer.writeStory(new StoryModel("story-1", List.of(
+                    new Paragraph("body", null, "Текст.")
+            )));
+
+            LayerModel decorLayer = new LayerModel("layer-decor", "Decoration", "decoration", true, 1.0);
+            VectorShape masterFrame = new VectorShape(
+                    "master-frame-1", "layer-decor",
+                    new Geometry(40, 40, 515, 762, 24.0, 24.0),
+                    "rounded-rectangle"
+            );
+            MasterPage masterPage = new MasterPage(
+                    "master-A", "Основной шаблон", 595.0, 842.0,
+                    MarginModel.uniform(40.0), GridModel.disabled(), BaselineGrid.disabled(),
+                    List.of(), List.of(masterFrame)
+            );
+            writer.writeTemplate(masterPage);
+
+            // Override ссылается на объект, которого нет на мастере
+            VectorShape brokenOverride = new VectorShape(
+                    "shape-broken", "layer-decor",
+                    new Geometry(40, 40, 515, 762, 24.0, 24.0),
+                    "rounded-rectangle",
+                    "master-frame-does-not-exist", Set.of("geometry")
+            );
+
+            writer.writePage(new PageModel(
+                    "page-1", 1, 595.0, 842.0, "pt", "master-A",
+                    List.of(decorLayer),
+                    List.of(brokenOverride)
+            ));
+
+            writer.finish("doc-1", "Bad Doc", "book", "0.1-composite", "ru-RU", StylesCatalog.empty());
+        }
+
+        try (DocumentHandle handle = serializer.open(file)) {
+            BdocValidationException ex = assertThrows(
+                    BdocValidationException.class, () -> validator.validate(handle));
+            assertTrue(ex.getErrors().stream().anyMatch(e -> e.contains("master-frame-does-not-exist")));
         }
     }
 }

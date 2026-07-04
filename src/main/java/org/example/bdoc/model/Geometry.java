@@ -45,4 +45,7 @@ public final class Geometry {
 
     public void setWidth(double width) { this.width = width; }
     public void setHeight(double height) { this.height = height; }
+    public Geometry copy() {
+        return new Geometry(x, y, width, height, arcWidth, arcHeight);
+    }
 }

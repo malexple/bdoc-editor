@@ -76,16 +76,13 @@ public final class BdocIntegrityValidator {
 
     private void validatePages(DocumentHandle document, Set<String> storyIds, List<String> errors) {
         Set<Integer> pageIndices = document.getPageIndices();
-
         if (pageIndices.isEmpty()) {
-            errors.add("Document has no pages (a document must contain at least one page)");
+            errors.add("Document has no pages: a document must contain at least one page");
             return;
         }
-
         validatePageIndexSequence(pageIndices, errors);
 
         Set<String> pageIdsSeen = new HashSet<>();
-
         for (int index : new TreeSet<>(pageIndices)) {
             PageModel page;
             try {
@@ -94,9 +91,14 @@ public final class BdocIntegrityValidator {
                 errors.add("Page index " + index + ": failed to load page file: " + e.getMessage());
                 continue;
             }
-
             if (!pageIdsSeen.add(page.getId())) {
-                errors.add("Duplicate page id '" + page.getId() + "' (page ids must be unique across the document)");
+                errors.add("Duplicate page id: " + page.getId() + ": page ids must be unique across the document");
+            }
+
+            // Новая проверка: templateRef должен указывать на существующий MasterPage
+            if (page.getTemplateRef() != null && document.getMasterPage(page.getTemplateRef()) == null) {
+                errors.add("Page " + page.getId() + " has templateRef " + page.getTemplateRef()
+                        + " which does not match any MasterPage in templates.json");
             }
 
             validateSinglePage(page, storyIds, document, errors);
@@ -113,30 +115,44 @@ public final class BdocIntegrityValidator {
         }
     }
 
-    private void validateSinglePage(PageModel page, Set<String> storyIds,
-                                    DocumentHandle document, List<String> errors) {
-        String pageLabel = "Page '" + page.getId() + "' (index " + page.getIndex() + ")";
-
+    private void validateSinglePage(PageModel page, Set<String> storyIds, DocumentHandle document, List<String> errors) {
+        String pageLabel = "Page " + page.getId() + " (index " + page.getIndex() + ")";
         if (page.getLayers().isEmpty()) {
-            errors.add(pageLabel + ": has no layers (a page must contain at least one layer)");
+            errors.add(pageLabel + " has no layers: a page must contain at least one layer");
         }
 
         Set<String> layerIds = new HashSet<>();
         for (LayerModel layer : page.getLayers()) {
             if (!layerIds.add(layer.getId())) {
-                errors.add(pageLabel + ": duplicate layer id '" + layer.getId() + "'");
+                errors.add(pageLabel + ": duplicate layer id " + layer.getId());
             }
         }
+
+        MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
+        Set<String> masterObjectIds = masterPage != null
+                ? masterPage.getObjects().stream().map(BdocObject::getId).collect(java.util.stream.Collectors.toSet())
+                : Set.of();
 
         Set<String> objectIds = new HashSet<>();
         for (BdocObject object : page.getObjects()) {
             if (!objectIds.add(object.getId())) {
-                errors.add(pageLabel + ": duplicate object id '" + object.getId() + "'");
+                errors.add(pageLabel + ": duplicate object id " + object.getId());
+            }
+            if (!layerIds.contains(object.getLayerRef())) {
+                errors.add(pageLabel + ": object " + object.getId() + " has layerRef " + object.getLayerRef()
+                        + " which does not match any layer on this page");
             }
 
-            if (!layerIds.contains(object.getLayerRef())) {
-                errors.add(pageLabel + ": object '" + object.getId() + "' has layerRef '" +
-                        object.getLayerRef() + "' which does not match any layer on this page");
+            // Новая проверка: masterSourceId должен указывать на реально существующий объект мастера
+            if (object.isMasterOverride()) {
+                if (masterPage == null) {
+                    errors.add(pageLabel + ": object " + object.getId() + " has masterSourceId "
+                            + object.getMasterSourceId() + " but page has no templateRef");
+                } else if (!masterObjectIds.contains(object.getMasterSourceId())) {
+                    errors.add(pageLabel + ": object " + object.getId() + " has masterSourceId "
+                            + object.getMasterSourceId() + " which does not match any object on MasterPage "
+                            + masterPage.getId());
+                }
             }
 
             validateObjectSpecifics(object, pageLabel, storyIds, document, errors);

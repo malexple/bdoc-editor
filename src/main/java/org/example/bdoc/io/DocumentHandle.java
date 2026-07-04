@@ -1,6 +1,5 @@
 package org.example.bdoc.io;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import org.example.bdoc.model.*;
 
@@ -20,16 +19,18 @@ public final class DocumentHandle implements Closeable {
     private final BdocContainer container;
     private final Manifest manifest;
     private final StylesCatalog styles;
+    private final TemplatesCatalog templates;
     private final Map<String, StoryModel> storiesById;
     private final Map<Integer, ManifestPageEntry> pageEntriesByIndex;
     private final Map<Integer, PageModel> pageCache = new HashMap<>();
     private final CBORMapper cborMapper;
 
     DocumentHandle(BdocContainer container, Manifest manifest, StylesCatalog styles,
-                   List<StoryModel> stories, CBORMapper cborMapper) {
+                   List<StoryModel> stories, TemplatesCatalog templates, CBORMapper cborMapper) {
         this.container = container;
         this.manifest = manifest;
         this.styles = styles;
+        this.templates = templates != null ? templates : TemplatesCatalog.empty();
         this.cborMapper = cborMapper;
         this.storiesById = stories.stream()
                 .collect(Collectors.toMap(StoryModel::getId, s -> s));
@@ -42,9 +43,18 @@ public final class DocumentHandle implements Closeable {
     public String getDocumentType() { return manifest.getDocumentType(); }
     public int getPageCount() { return manifest.getPages().size(); }
     public StylesCatalog getStyles() { return styles; }
+    public TemplatesCatalog getTemplates() { return templates; }
 
     public StoryModel getStory(String storyId) {
         return storiesById.get(storyId);
+    }
+
+    /**
+     * Возвращает шаблон страницы по её templateRef, либо null, если
+     * страница не привязана к мастеру или мастер не найден.
+     */
+    public MasterPage getMasterPage(String templateRef) {
+        return templates.findMasterPage(templateRef);
     }
 
     /**

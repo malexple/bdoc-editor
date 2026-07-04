@@ -18,7 +18,7 @@ public final class BdocContainerSerializer {
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
     /**
-     * Открывает .bdoc-файл: манифест и stories читаются немедленно,
+     * Открывает .bdoc-файл: манифест, stories и шаблоны читаются немедленно,
      * страницы — лениво через возвращённый DocumentHandle.
      */
     public DocumentHandle open(File bdocFile) throws IOException {
@@ -38,7 +38,15 @@ public final class BdocContainerSerializer {
                 stories.add(story);
             }
 
-            return new DocumentHandle(container, manifest, styles, stories, cborMapper);
+            List<MasterPage> masterPages = new ArrayList<>();
+            for (ManifestTemplateEntry entry : manifest.getTemplates()) {
+                MasterPage masterPage = jsonMapper.readValue(
+                        container.readBytes(entry.getFile()), MasterPage.class);
+                masterPages.add(masterPage);
+            }
+            TemplatesCatalog templates = new TemplatesCatalog(masterPages);
+
+            return new DocumentHandle(container, manifest, styles, stories, templates, cborMapper);
         } catch (IOException e) {
             container.close();
             throw e;
@@ -62,6 +70,7 @@ public final class BdocContainerSerializer {
         private final CBORMapper cborMapper;
         private final List<ManifestPageEntry> pageEntries = new ArrayList<>();
         private final List<ManifestStoryEntry> storyEntries = new ArrayList<>();
+        private final List<ManifestTemplateEntry> templateEntries = new ArrayList<>();
         private boolean finished = false;
 
         private Writer(BdocContainer container, ObjectMapper jsonMapper, CBORMapper cborMapper) {
@@ -84,6 +93,13 @@ public final class BdocContainerSerializer {
             return this;
         }
 
+        public Writer writeTemplate(MasterPage masterPage) throws IOException {
+            String file = "templates/" + masterPage.getId() + ".json";
+            container.writeBytes(file, jsonMapper.writeValueAsBytes(masterPage));
+            templateEntries.add(new ManifestTemplateEntry(masterPage.getId(), file));
+            return this;
+        }
+
         public Writer writeResource(String assetRef, byte[] data) throws IOException {
             container.writeBytes(assetRef, data);
             return this;
@@ -95,7 +111,7 @@ public final class BdocContainerSerializer {
                 throw new IllegalStateException("Writer already finished");
             }
             Manifest manifest = new Manifest(
-                    id, title, documentType, version, language, pageEntries, storyEntries);
+                    id, title, documentType, version, language, pageEntries, storyEntries, templateEntries);
             container.writeBytes("manifest.json", jsonMapper.writeValueAsBytes(manifest));
             container.writeBytes("styles.json",
                     jsonMapper.writeValueAsBytes(styles != null ? styles : StylesCatalog.empty()));
