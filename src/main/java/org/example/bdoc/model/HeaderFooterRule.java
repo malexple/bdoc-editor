@@ -38,8 +38,16 @@ public final class HeaderFooterRule extends BdocObject {
             @JsonProperty("styleRef") String styleRef,
             @JsonProperty("masterSourceId") String masterSourceId,
             @JsonProperty("overriddenProperties") Set<String> overriddenProperties,
-            @JsonProperty("visible") Boolean visible) {
-        super(id, layerRef, geometry, masterSourceId, overriddenProperties, visible);
+            @JsonProperty("visible") Boolean visible,
+            @JsonProperty("clipGeometry") Geometry clipGeometry,
+            @JsonProperty("maskRef") String maskRef,
+            @JsonProperty("mask") Boolean mask,
+            @JsonProperty("artifact") Boolean artifact,
+            @JsonProperty("artifactType") String artifactType,
+            @JsonProperty("textWrap") TextWrapModel textWrap,
+            @JsonProperty("pathData") PathModel pathData) {
+        super(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
+                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData);
         this.zone = zone;
         this.textTemplate = textTemplate;
         this.styleRef = styleRef;

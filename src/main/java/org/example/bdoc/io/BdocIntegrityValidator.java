@@ -162,6 +162,9 @@ public final class BdocIntegrityValidator {
         Set<String> availableObjectIds = new HashSet<>(objectIds);
         availableObjectIds.addAll(masterObjectIds);
         validateReadingOrder(page, availableObjectIds, pageLabel, errors);
+        validateGroups(page, objectIds, errors, pageLabel);
+        validateTableFrames(page, storyIds, errors, pageLabel);
+        validateMaskReferences(page, objectIds, errors, pageLabel);
     }
 
     private void validateObjectSpecifics(BdocObject object, String pageLabel, Set<String> storyIds,
@@ -222,6 +225,100 @@ public final class BdocIntegrityValidator {
                 errors.add(pageLabel + ": readingOrder references targetObjectId "
                         + segment.getTargetObjectId() + " which does not match any object on this page or its MasterPage");
             }
+
+            BdocObject targetObject = page.getObjects().stream()
+                    .filter(o -> o.getId().equals(segment.getTargetObjectId()))
+                    .findFirst()
+                    .orElse(null);
+            if (targetObject != null && targetObject.isArtifact()) {
+                errors.add(pageLabel + ": readingOrder includes " + segment.getTargetObjectId()
+                        + " which is marked as artifact (artifactType=" + targetObject.getArtifactType()
+                        + ") and must be excluded from the reading flow");
+            }
+        }
+
+
+    }
+
+    private void validateGroups(PageModel page, Set<String> objectIds, List<String> errors, String pageLabel) {
+        Map<String, Group> groupsById = new HashMap<>();
+        for (BdocObject object : page.getObjects()) {
+            if (object instanceof Group group) {
+                groupsById.put(group.getId(), group);
+            }
+        }
+
+        for (Group group : groupsById.values()) {
+            for (String childId : group.getChildObjectIds()) {
+                if (!objectIds.contains(childId)) {
+                    errors.add(pageLabel + ": group " + group.getId() + " references childObjectId "
+                            + childId + " which does not exist on this page");
+                }
+            }
+        }
+
+        for (Group group : groupsById.values()) {
+            Set<String> visiting = new HashSet<>();
+            if (hasCycle(group.getId(), groupsById, visiting)) {
+                errors.add(pageLabel + ": group " + group.getId() + " participates in a circular nesting chain");
+            }
         }
     }
+
+    private boolean hasCycle(String groupId, Map<String, Group> groupsById, Set<String> visiting) {
+        if (!visiting.add(groupId)) {
+            return true;
+        }
+        Group group = groupsById.get(groupId);
+        if (group != null) {
+            for (String childId : group.getChildObjectIds()) {
+                if (groupsById.containsKey(childId) && hasCycle(childId, groupsById, visiting)) {
+                    return true;
+                }
+            }
+        }
+        visiting.remove(groupId);
+        return false;
+    }
+
+    private void validateTableFrames(PageModel page, Set<String> storyIds, List<String> errors, String pageLabel) {
+        for (BdocObject object : page.getObjects()) {
+            if (!(object instanceof TableFrame table)) continue;
+
+            for (TableCell cell : table.getCells()) {
+                if (cell.getRowIndex() < 0 || cell.getRowIndex() >= table.getRowCount()
+                        || cell.getColIndex() < 0 || cell.getColIndex() >= table.getColumnCount()) {
+                    errors.add(pageLabel + ": tableFrame " + table.getId() + " has cell ["
+                            + cell.getRowIndex() + "," + cell.getColIndex() + "] out of declared bounds");
+                }
+                if (cell.getStoryRef() != null && !storyIds.contains(cell.getStoryRef())) {
+                    errors.add(pageLabel + ": tableFrame " + table.getId() + " cell ["
+                            + cell.getRowIndex() + "," + cell.getColIndex() + "] has storyRef "
+                            + cell.getStoryRef() + " which does not match any story");
+                }
+            }
+        }
+    }
+
+    private void validateMaskReferences(PageModel page, Set<String> objectIds, List<String> errors, String pageLabel) {
+        Map<String, BdocObject> objectsById = new HashMap<>();
+        for (BdocObject object : page.getObjects()) {
+            objectsById.put(object.getId(), object);
+        }
+
+        for (BdocObject object : page.getObjects()) {
+            if (object.getMaskRef() == null) continue;
+
+            BdocObject target = objectsById.get(object.getMaskRef());
+            if (target == null) {
+                errors.add(pageLabel + ": object " + object.getId() + " has maskRef " + object.getMaskRef()
+                        + " which does not exist on this page");
+            } else if (!target.isMask()) {
+                errors.add(pageLabel + ": object " + object.getId() + " has maskRef " + object.getMaskRef()
+                        + " but target object is not marked as mask=true");
+            }
+        }
+    }
+
+
 }

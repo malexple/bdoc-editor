@@ -259,6 +259,134 @@ public final class SampleDocuments {
             );
             writer.writePage(page3);
 
+            // ---------- Страница 4: Group, TableFrame, LineObject, маска, артефакт ----------
+
+            StoryModel storyCaption = new StoryModel("story-caption", List.of(
+                    new Paragraph("caption", "footer-text", "Рис. 1 — декоративная иконка с подписью")
+            ));
+            writer.writeStory(storyCaption);
+
+            StoryModel storyCell00 = new StoryModel("story-cell-0-0", List.of(
+                    new Paragraph("cell", "body-text", "Товар")
+            ));
+            writer.writeStory(storyCell00);
+
+            StoryModel storyCell01 = new StoryModel("story-cell-0-1", List.of(
+                    new Paragraph("cell", "body-text", "Цена")
+            ));
+            writer.writeStory(storyCell01);
+
+            StoryModel storyCell10 = new StoryModel("story-cell-1-0", List.of(
+                    new Paragraph("cell", "body-text", "Букварь, 1913")
+            ));
+            writer.writeStory(storyCell10);
+
+            StoryModel storyCell11 = new StoryModel("story-cell-1-1", List.of(
+                    new Paragraph("cell", "body-text", "1200 руб.")
+            ));
+            writer.writeStory(storyCell11);
+
+            LayerModel decorLayer4 = new LayerModel("layer-decor", "Decoration", "decoration", true, 1.0);
+            LayerModel textLayer4 = new LayerModel("layer-text", "Text", "text", true, 1.0);
+            LayerModel footerLayer4 = new LayerModel("layer-footer", "Footer", "header-footer", true, 1.0);
+
+            // Заголовок страницы
+            TextFrame headingFrame4 = new TextFrame(
+                    "text-4-heading", "layer-text",
+                    new Geometry(70.0, 120.0, 455.0, 40.0),
+                    "story-3-heading"
+            );
+
+            // LineObject: наклонная декоративная линейка с двойной обводкой и стрелкой на конце
+            LineObject divider4 = new LineObject(
+                    "line-divider-4", "layer-decor",
+                    70.0, 170.0, 525.0, 170.0,
+                    1.5, "#64748B", "double",
+                    "none", "arrow"
+            );
+
+            // Group: иконка (VectorShape) + подпись (TextFrame), объединённые в карточку
+            VectorShape iconDecor = new VectorShape(
+                    "icon-decor-1", "layer-decor",
+                    new Geometry(70.0, 200.0, 60.0, 60.0, 8.0, 8.0),
+                    "rounded-rectangle"
+            );
+
+            TextFrame captionFrame = new TextFrame(
+                    "text-caption-1", "layer-text",
+                    new Geometry(140.0, 210.0, 200.0, 40.0),
+                    "story-caption"
+            );
+
+            Group cardGroup = new Group(
+                    "group-card-1", "layer-text",
+                    new Geometry(70.0, 200.0, 270.0, 60.0),
+                    List.of("icon-decor-1", "text-caption-1")
+            );
+
+            // Маска: VectorShape со звездообразным контуром (contourType=bezier, рендер
+            // контура откладывается на Этап 2), maskRef ссылается на неё с другого объекта
+            VectorShape maskStar = new VectorShape(
+                    "mask-star-1", "layer-decor",
+                    new Geometry(360.0, 200.0, 80.0, 80.0),
+                    "rectangle",
+                    null, null, true,
+                    null, null, true, false, null, null,
+                    new PathModel("bezier", List.of(
+                            PathPoint.moveTo(400.0, 200.0),
+                            PathPoint.lineTo(420.0, 240.0),
+                            PathPoint.cubicTo(430.0, 250.0, 440.0, 250.0, 440.0, 240.0)
+                    ))
+            );
+
+            VectorShape maskedShape = new VectorShape(
+                    "shape-masked-icon", "layer-decor",
+                    new Geometry(360.0, 200.0, 80.0, 80.0),
+                    "rectangle",
+                    null, null, true,
+                    null, "mask-star-1", false, false, null, null, null
+            );
+
+            // TableFrame: прайс-лист 2x2, вторая колонка вдвое шире первой
+            TableFrame priceTable = new TableFrame(
+                    "table-info-1", "layer-text",
+                    new Geometry(70.0, 300.0, 400.0, 100.0),
+                    2, 2,
+                    List.of(new TableRow(1.0), new TableRow(1.0)),
+                    List.of(new TableColumn(1.0), new TableColumn(2.0)),
+                    List.of(
+                            new TableCell(0, 0, "story-cell-0-0"),
+                            new TableCell(0, 1, "story-cell-0-1"),
+                            new TableCell(1, 0, "story-cell-1-0"),
+                            new TableCell(1, 1, "story-cell-1-1")
+                    )
+            );
+
+            // Артефакт: локальный override колонтитула с явным artifactType=pagination —
+            // валидатор гарантирует, что этот объект нельзя добавить в readingOrder
+            HeaderFooterRule footerArtifact4 = new HeaderFooterRule(
+                    "master-footer-1", "layer-footer",
+                    new Geometry(70.0, 780.0, 455.0, 20.0),
+                    null, null, null,
+                    "master-footer-1", Set.of("geometry"), true,
+                    null, null, false, true, "pagination", null, null
+            );
+
+            List<ReadingSegment> readingOrder4 = List.of(
+                    new ReadingSegment(1, "text-4-heading", "heading"),
+                    new ReadingSegment(2, "text-caption-1", "caption"),
+                    new ReadingSegment(3, "table-info-1", "table")
+            );
+
+            PageModel page4 = new PageModel(
+                    "page-4", 4, 595.0, 842.0, "pt", "master-A",
+                    List.of(decorLayer4, textLayer4, footerLayer4),
+                    List.of(headingFrame4, divider4, iconDecor, captionFrame, cardGroup,
+                            maskStar, maskedShape, priceTable, footerArtifact4),
+                    readingOrder4
+            );
+            writer.writePage(page4);
+
             StylesCatalog styles = new StylesCatalog(
                     List.of(bodyStyle, headingStyle, footerStyle, quoteStyle),
                     List.of(boldEmphasis)

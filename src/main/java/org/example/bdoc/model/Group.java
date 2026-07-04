@@ -3,29 +3,24 @@ package org.example.bdoc.model;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.List;
 import java.util.Set;
 
-public final class ImageFrame extends BdocObject {
+public final class Group extends BdocObject {
 
-    private final String assetRef;
+    private final List<String> childObjectIds;
 
-    public ImageFrame(String id, String layerRef, Geometry geometry, String assetRef) {
+    public Group(String id, String layerRef, Geometry geometry, List<String> childObjectIds) {
         super(id, layerRef, geometry);
-        this.assetRef = assetRef;
-    }
-
-    public ImageFrame(String id, String layerRef, Geometry geometry, String assetRef,
-                      String masterSourceId, Set<String> overriddenProperties) {
-        super(id, layerRef, geometry, masterSourceId, overriddenProperties);
-        this.assetRef = assetRef;
+        this.childObjectIds = childObjectIds != null ? childObjectIds : List.of();
     }
 
     @JsonCreator
-    public ImageFrame(
+    public Group(
             @JsonProperty("id") String id,
             @JsonProperty("layerRef") String layerRef,
             @JsonProperty("geometry") Geometry geometry,
-            @JsonProperty("assetRef") String assetRef,
+            @JsonProperty("childObjectIds") List<String> childObjectIds,
             @JsonProperty("masterSourceId") String masterSourceId,
             @JsonProperty("overriddenProperties") Set<String> overriddenProperties,
             @JsonProperty("visible") Boolean visible,
@@ -38,11 +33,11 @@ public final class ImageFrame extends BdocObject {
             @JsonProperty("pathData") PathModel pathData) {
         super(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
                 clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData);
-        this.assetRef = assetRef;
+        this.childObjectIds = childObjectIds != null ? childObjectIds : List.of();
     }
 
-    public String getAssetRef() { return assetRef; }
+    public List<String> getChildObjectIds() { return childObjectIds; }
 
     @Override
-    public String getType() { return "ImageFrame"; }
+    public String getType() { return "Group"; }
 }
