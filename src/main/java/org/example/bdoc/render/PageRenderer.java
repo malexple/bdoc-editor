@@ -33,7 +33,7 @@ public class PageRenderer {
         effectiveObjects.stream()
                 .filter(object -> {
                     LayerModel layer = layers.get(object.getLayerRef());
-                    return layer != null && layer.isVisible();
+                    return layer != null && layer.isVisible() && object.isVisible();
                 })
                 .sorted(Comparator.comparingInt(o -> page.getLayers().indexOf(layers.get(o.getLayerRef()))))
                 .forEach(object -> renderObject(gc, object, document, layers.get(object.getLayerRef()),

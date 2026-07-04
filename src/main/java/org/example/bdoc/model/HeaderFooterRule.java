@@ -5,12 +5,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.Set;
 
-/**
- * Колонтитул на мастер-странице. textTemplate хранит статичную строку
- * с текстовыми плейсхолдерами (например, "Страница {page_num}").
- * Разбор плейсхолдеров и подстановка значений — задача Этапа 2, здесь
- * только хранение шаблона и его оформления.
- */
 public final class HeaderFooterRule extends BdocObject {
 
     private final String zone;
@@ -25,6 +19,15 @@ public final class HeaderFooterRule extends BdocObject {
         this.styleRef = styleRef;
     }
 
+    public HeaderFooterRule(String id, String layerRef, Geometry geometry,
+                            String zone, String textTemplate, String styleRef,
+                            String masterSourceId, Set<String> overriddenProperties) {
+        super(id, layerRef, geometry, masterSourceId, overriddenProperties);
+        this.zone = zone;
+        this.textTemplate = textTemplate;
+        this.styleRef = styleRef;
+    }
+
     @JsonCreator
     public HeaderFooterRule(
             @JsonProperty("id") String id,
@@ -34,8 +37,9 @@ public final class HeaderFooterRule extends BdocObject {
             @JsonProperty("textTemplate") String textTemplate,
             @JsonProperty("styleRef") String styleRef,
             @JsonProperty("masterSourceId") String masterSourceId,
-            @JsonProperty("overriddenProperties") Set<String> overriddenProperties) {
-        super(id, layerRef, geometry, masterSourceId, overriddenProperties);
+            @JsonProperty("overriddenProperties") Set<String> overriddenProperties,
+            @JsonProperty("visible") Boolean visible) {
+        super(id, layerRef, geometry, masterSourceId, overriddenProperties, visible);
         this.zone = zone;
         this.textTemplate = textTemplate;
         this.styleRef = styleRef;

@@ -24,25 +24,27 @@ public abstract class BdocObject {
     protected final Geometry geometry;
     protected final String masterSourceId;
     protected final Set<String> overriddenProperties;
+    // Мутабельное — управляется чекбоксом объекта в дереве слоёв,
+    // независимо от видимости родительского LayerModel.
+    protected boolean visible;
 
-    /** Обычный, самостоятельный объект страницы — не связан с мастером. */
     protected BdocObject(String id, String layerRef, Geometry geometry) {
-        this(id, layerRef, geometry, null, null);
+        this(id, layerRef, geometry, null, null, true);
     }
 
-    /**
-     * Объект — частичный override объекта мастер-страницы.
-     * masterSourceId — id объекта на MasterPage, от которого унаследованы свойства.
-     * overriddenProperties — имена полей, которые локально переопределены
-     * (например, "geometry"); все остальные поля берёт PageRenderer с мастера.
-     */
     protected BdocObject(String id, String layerRef, Geometry geometry,
                          String masterSourceId, Set<String> overriddenProperties) {
+        this(id, layerRef, geometry, masterSourceId, overriddenProperties, true);
+    }
+
+    protected BdocObject(String id, String layerRef, Geometry geometry,
+                         String masterSourceId, Set<String> overriddenProperties, Boolean visible) {
         this.id = id;
         this.layerRef = layerRef;
         this.geometry = geometry;
         this.masterSourceId = masterSourceId;
         this.overriddenProperties = overriddenProperties != null ? overriddenProperties : Set.of();
+        this.visible = visible != null ? visible : true;
     }
 
     public String getId() { return id; }
@@ -51,6 +53,8 @@ public abstract class BdocObject {
     public String getMasterSourceId() { return masterSourceId; }
     public Set<String> getOverriddenProperties() { return overriddenProperties; }
     public boolean isMasterOverride() { return masterSourceId != null; }
+    public boolean isVisible() { return visible; }
+    public void setVisible(boolean visible) { this.visible = visible; }
 
     public abstract String getType();
 }

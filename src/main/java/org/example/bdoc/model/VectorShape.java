@@ -14,6 +14,12 @@ public final class VectorShape extends BdocObject {
         this.shapeType = shapeType;
     }
 
+    public VectorShape(String id, String layerRef, Geometry geometry, String shapeType,
+                       String masterSourceId, Set<String> overriddenProperties) {
+        super(id, layerRef, geometry, masterSourceId, overriddenProperties);
+        this.shapeType = shapeType;
+    }
+
     @JsonCreator
     public VectorShape(
             @JsonProperty("id") String id,
@@ -21,8 +27,9 @@ public final class VectorShape extends BdocObject {
             @JsonProperty("geometry") Geometry geometry,
             @JsonProperty("shapeType") String shapeType,
             @JsonProperty("masterSourceId") String masterSourceId,
-            @JsonProperty("overriddenProperties") Set<String> overriddenProperties) {
-        super(id, layerRef, geometry, masterSourceId, overriddenProperties);
+            @JsonProperty("overriddenProperties") Set<String> overriddenProperties,
+            @JsonProperty("visible") Boolean visible) {
+        super(id, layerRef, geometry, masterSourceId, overriddenProperties, visible);
         this.shapeType = shapeType;
     }
 

@@ -8,6 +8,7 @@ import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
@@ -35,7 +36,7 @@ public class BdocEditorApp extends Application {
     private int currentPageIndex = 1;
 
     private Canvas canvas;
-    private ListView<String> documentTree;
+    private TreeView<TreeNodeData> documentTree;
     private Label statusLabel;
 
     private DtpTool currentTool = DtpTool.SELECTION;
@@ -56,14 +57,46 @@ public class BdocEditorApp extends Application {
     private double initialHeight = 0;
     private final double HANDLE_SIZE = 6.0;
 
+    /** Узел дерева: либо страница, либо слой, либо объект. */
+    private enum NodeKind { DOCUMENT, PAGE, LAYER, OBJECT }
+
+    private static final class TreeNodeData {
+        final NodeKind kind;
+        final int pageIndex;
+        final LayerModel layer;
+        final BdocObject object;
+        final boolean isMasterLocked;
+
+        static TreeNodeData document() {
+            return new TreeNodeData(NodeKind.DOCUMENT, -1, null, null, false);
+        }
+        static TreeNodeData page(int pageIndex) {
+            return new TreeNodeData(NodeKind.PAGE, pageIndex, null, null, false);
+        }
+        static TreeNodeData layer(int pageIndex, LayerModel layer) {
+            return new TreeNodeData(NodeKind.LAYER, pageIndex, layer, null, false);
+        }
+        static TreeNodeData object(int pageIndex, LayerModel layer, BdocObject object, boolean masterLocked) {
+            return new TreeNodeData(NodeKind.OBJECT, pageIndex, layer, object, masterLocked);
+        }
+
+        private TreeNodeData(NodeKind kind, int pageIndex, LayerModel layer, BdocObject object, boolean isMasterLocked) {
+            this.kind = kind;
+            this.pageIndex = pageIndex;
+            this.layer = layer;
+            this.object = object;
+            this.isMasterLocked = isMasterLocked;
+        }
+    }
+
     @Override
     public void start(Stage stage) {
-        documentTree = new ListView<>();
-        documentTree.setPrefWidth(220);
-        documentTree.getSelectionModel().selectedIndexProperty().addListener((obs, oldIdx, newIdx) -> {
-            if (newIdx != null && newIdx.intValue() >= 0) {
-                onPageSelected(newIdx.intValue());
-            }
+        documentTree = new TreeView<>();
+        documentTree.setPrefWidth(260);
+        documentTree.setCellFactory(tv -> new TreeNodeCell());
+        documentTree.getSelectionModel().selectedItemProperty().addListener((obs, oldItem, newItem) -> {
+            if (newItem == null) return;
+            onTreeSelectionChanged(newItem.getValue());
         });
 
         canvas = new Canvas(595, 842);
@@ -83,7 +116,7 @@ public class BdocEditorApp extends Application {
         propertiesPane.setCenter(propertiesContainer);
 
         SplitPane splitPane = new SplitPane(documentTree, canvasPane, propertiesPane);
-        splitPane.setDividerPositions(0.18, 0.78);
+        splitPane.setDividerPositions(0.22, 0.76);
         statusLabel = new Label("No document loaded");
 
         ToggleGroup toolGroup = new ToggleGroup();
@@ -133,7 +166,6 @@ public class BdocEditorApp extends Application {
                         if (x >= handles[i][0] - HANDLE_SIZE && x <= handles[i][0] + HANDLE_SIZE &&
                                 y >= handles[i][1] - HANDLE_SIZE && y <= handles[i][1] + HANDLE_SIZE) {
 
-                            // Резать по мастеру можно только через материализованный override
                             selectedObject = materializeOverrideIfNeeded(page, masterPage, selectedObject);
 
                             isResizing = true;
@@ -158,6 +190,7 @@ public class BdocEditorApp extends Application {
                 BdocObject found = null;
                 for (int i = effectiveObjects.size() - 1; i >= 0; i--) {
                     BdocObject obj = effectiveObjects.get(i);
+                    if (!obj.isVisible()) continue;
                     Geometry g = obj.getGeometry();
                     if (e.getX() >= g.getX() && e.getX() <= g.getX() + g.getWidth() &&
                             e.getY() >= g.getY() && e.getY() <= g.getY() + g.getHeight()) {
@@ -167,6 +200,7 @@ public class BdocEditorApp extends Application {
                 }
 
                 selectedObject = found;
+                selectTreeNodeFor(selectedObject);
 
                 if (currentTool == DtpTool.SELECTION) {
                     if (selectedObject != null) {
@@ -204,7 +238,6 @@ public class BdocEditorApp extends Application {
                 PageModel page = document.loadPage(currentPageIndex);
                 MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
 
-                // Первое движение по "сырому" объекту мастера — материализуем override
                 if (!isResizing && pageRenderer.isRawMasterObject(selectedObject, masterPage)) {
                     selectedObject = materializeOverrideIfNeeded(page, masterPage, selectedObject);
                     objectInitialX = selectedObject.getGeometry().getX();
@@ -284,52 +317,106 @@ public class BdocEditorApp extends Application {
         loadInitialSample(stage);
     }
 
-    /**
-     * Если object — "сырой" объект мастера без локального override, создаёт
-     * его копию с masterSourceId и overriddenProperties={"geometry"},
-     * добавляет в page.getObjects() и возвращает копию. Если object уже
-     * является override или страница не привязана к мастеру — возвращает
-     * object без изменений.
-     */
-    private BdocObject materializeOverrideIfNeeded(PageModel page, MasterPage masterPage, BdocObject object) {
-        if (masterPage == null || object.isMasterOverride()) {
-            return object;
-        }
-        if (masterPage.findObject(object.getId()) == null) {
-            return object;
-        }
+    /** Кастомная ячейка дерева: иконка 👁/🔒 + название, с тусклым стилем для мастер-объектов. */
+    private class TreeNodeCell extends TreeCell<TreeNodeData> {
+        @Override
+        protected void updateItem(TreeNodeData data, boolean empty) {
+            super.updateItem(data, empty);
+            if (empty || data == null) {
+                setText(null);
+                setGraphic(null);
+                setStyle("");
+                return;
+            }
 
-        Set<String> overridden = new HashSet<>();
-        overridden.add("geometry");
-        Geometry clonedGeometry = object.getGeometry().copy();
-
-        BdocObject override;
-        if (object instanceof TextFrame tf) {
-            override = new TextFrame(tf.getId(), tf.getLayerRef(), clonedGeometry, tf.getStoryRef(), tf.getId(), overridden);
-        } else if (object instanceof ImageFrame imf) {
-            override = new ImageFrame(imf.getId(), imf.getLayerRef(), clonedGeometry, imf.getAssetRef(), imf.getId(), overridden);
-        } else if (object instanceof VectorShape vs) {
-            override = new VectorShape(vs.getId(), vs.getLayerRef(), clonedGeometry, vs.getShapeType(), vs.getId(), overridden);
-        } else if (object instanceof HeaderFooterRule hfr) {
-            override = new HeaderFooterRule(
-                    hfr.getId(), hfr.getLayerRef(), clonedGeometry,
-                    hfr.getZone(), hfr.getTextTemplate(), hfr.getStyleRef(),
-                    hfr.getId(), overridden);
-        } else {
-            return object;
+            switch (data.kind) {
+                case DOCUMENT -> {
+                    setText(document != null ? "Document: " + document.getTitle() : "Document");
+                    setGraphic(null);
+                    setStyle("-fx-font-weight: bold;");
+                }
+                case PAGE -> {
+                    setText("Page " + data.pageIndex);
+                    setGraphic(null);
+                    setStyle("");
+                }
+                case LAYER -> {
+                    CheckBox eyeBox = new CheckBox(data.layer.getName() + " (" + data.layer.getRole() + ")");
+                    eyeBox.setSelected(data.layer.isVisible());
+                    eyeBox.setOnAction(e -> {
+                        data.layer.setVisible(eyeBox.isSelected());
+                        renderCurrentPage();
+                    });
+                    setGraphic(eyeBox);
+                    setText(null);
+                    setStyle("-fx-font-weight: bold;");
+                }
+                case OBJECT -> {
+                    CheckBox eyeBox = new CheckBox();
+                    eyeBox.setSelected(data.object.isVisible());
+                    String label = (data.isMasterLocked ? "🔒 " : "") + data.object.getId()
+                            + " [" + data.object.getType() + "]";
+                    eyeBox.setText(label);
+                    eyeBox.setOnAction(e -> {
+                        data.object.setVisible(eyeBox.isSelected());
+                        renderCurrentPage();
+                    });
+                    HBox box = new HBox(eyeBox);
+                    setGraphic(box);
+                    setText(null);
+                    if (data.isMasterLocked) {
+                        setStyle("-fx-opacity: 0.55; -fx-font-style: italic;");
+                    } else {
+                        setStyle("");
+                    }
+                }
+            }
         }
-
-        page.getObjects().add(override);
-        return override;
     }
 
-    /** Удаляет локальный override и возвращает исходный объект мастера. */
-    private BdocObject restoreToMaster(PageModel page, MasterPage masterPage, BdocObject overrideObject) {
-        if (masterPage == null || !overrideObject.isMasterOverride()) {
-            return overrideObject;
+    private void onTreeSelectionChanged(TreeNodeData data) {
+        if (data == null || document == null) return;
+
+        if (data.kind == NodeKind.PAGE) {
+            currentPageIndex = data.pageIndex;
+            selectedObject = null;
+            propertiesContainer.getChildren().clear();
+            renderCurrentPage();
+            return;
         }
-        page.getObjects().removeIf(o -> o.getId().equals(overrideObject.getId()) && o.isMasterOverride());
-        return masterPage.findObject(overrideObject.getMasterSourceId());
+
+        if (data.kind == NodeKind.OBJECT) {
+            currentPageIndex = data.pageIndex;
+            selectedObject = data.object;
+            try {
+                PageModel page = document.loadPage(currentPageIndex);
+                MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
+                updatePropertiesPane(page, masterPage, selectedObject);
+            } catch (IOException ex) {
+                showError("Selection Error", ex.getMessage());
+            }
+            renderCurrentPage();
+        }
+    }
+
+    /** После клика по canvas подсвечивает соответствующий узел в дереве, не переоткрывая всё дерево. */
+    private void selectTreeNodeFor(BdocObject object) {
+        if (object == null || documentTree.getRoot() == null) return;
+        findAndSelectRecursive(documentTree.getRoot(), object);
+    }
+
+    private boolean findAndSelectRecursive(TreeItem<TreeNodeData> item, BdocObject target) {
+        if (item.getValue() != null && item.getValue().kind == NodeKind.OBJECT
+                && item.getValue().object == target) {
+            documentTree.getSelectionModel().select(item);
+            return true;
+        }
+        for (TreeItem<TreeNodeData> child : item.getChildren()) {
+            if (findAndSelectRecursive(child, target)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void loadInitialSample(Stage stage) {
@@ -401,13 +488,13 @@ public class BdocEditorApp extends Application {
             document = opened;
             currentFile = file;
             currentPageIndex = 1;
+            selectedObject = null;
 
             if (previous != null) {
                 previous.close();
             }
 
             refreshTree();
-            documentTree.getSelectionModel().select(0);
             renderCurrentPage();
 
             statusLabel.setText("Opened: " + file.getName()
@@ -415,18 +502,6 @@ public class BdocEditorApp extends Application {
         } catch (Exception ex) {
             showError("Open error", ex.getMessage());
         }
-    }
-
-    private void onPageSelected(int listIndex) {
-        if (document == null) {
-            return;
-        }
-        int pageIndex = listIndex + 1;
-        if (pageIndex < 1 || pageIndex > document.getPageCount()) {
-            return;
-        }
-        currentPageIndex = pageIndex;
-        renderCurrentPage();
     }
 
     private void renderCurrentPage() {
@@ -443,13 +518,46 @@ public class BdocEditorApp extends Application {
         }
     }
 
+    /**
+     * Полностью перестраивает дерево: Document → Page → Layer → Objects.
+     * Мастер-объекты без override показаны в потоке объектов слоя с иконкой 🔒
+     * и полупрозрачным стилем — они физически находятся в том же слое,
+     * куда их поместил MasterPage.
+     */
     private void refreshTree() {
-        documentTree.getItems().clear();
-        documentTree.getItems().add("Document: " + document.getTitle());
+        TreeItem<TreeNodeData> root = new TreeItem<>(TreeNodeData.document());
+        root.setExpanded(true);
 
-        for (int i = 1; i <= document.getPageCount(); i++) {
-            documentTree.getItems().add("Page " + i);
+        for (int pageIndex = 1; pageIndex <= document.getPageCount(); pageIndex++) {
+            TreeItem<TreeNodeData> pageItem = new TreeItem<>(TreeNodeData.page(pageIndex));
+            pageItem.setExpanded(pageIndex == currentPageIndex);
+
+            try {
+                PageModel page = document.loadPage(pageIndex);
+                MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
+                List<BdocObject> effectiveObjects = pageRenderer.resolveEffectiveObjects(page, masterPage);
+
+                for (LayerModel layer : page.getLayers()) {
+                    TreeItem<TreeNodeData> layerItem = new TreeItem<>(TreeNodeData.layer(pageIndex, layer));
+                    layerItem.setExpanded(true);
+
+                    for (BdocObject object : effectiveObjects) {
+                        if (!object.getLayerRef().equals(layer.getId())) continue;
+                        boolean isMasterLocked = pageRenderer.isRawMasterObject(object, masterPage);
+                        layerItem.getChildren().add(new TreeItem<>(
+                                TreeNodeData.object(pageIndex, layer, object, isMasterLocked)));
+                    }
+                    pageItem.getChildren().add(layerItem);
+                }
+            } catch (IOException ex) {
+                showError("Tree build error", "Failed to load page " + pageIndex + ": " + ex.getMessage());
+            }
+
+            root.getChildren().add(pageItem);
         }
+
+        documentTree.setRoot(root);
+        documentTree.setShowRoot(true);
     }
 
     public static void main(String[] args) {
@@ -485,6 +593,7 @@ public class BdocEditorApp extends Application {
         visibleCheckBox.setOnAction(e -> {
             objectLayer.setVisible(visibleCheckBox.isSelected());
             renderCurrentPage();
+            refreshTree();
         });
 
         Label opacityLabel = new Label("Layer Opacity: " + Math.round(objectLayer.getOpacity() * 100) + "%");
@@ -495,16 +604,26 @@ public class BdocEditorApp extends Application {
             renderCurrentPage();
         });
 
+        // Новый чекбокс — видимость конкретного объекта, независимо от слоя
+        CheckBox objectVisibleCheckBox = new CheckBox("Object Visible");
+        objectVisibleCheckBox.setSelected(object.isVisible());
+        objectVisibleCheckBox.setOnAction(e -> {
+            object.setVisible(objectVisibleCheckBox.isSelected());
+            renderCurrentPage();
+            refreshTree();
+        });
+
         propertiesContainer.getChildren().addAll(
                 objectInfo,
                 new Separator(),
                 layerLabel,
                 visibleCheckBox,
                 opacityLabel,
-                opacitySlider
+                opacitySlider,
+                new Separator(),
+                objectVisibleCheckBox
         );
 
-        // Кнопка "Сбросить к параметрам мастера" — только для override-объектов
         if (object.isMasterOverride()) {
             Label masterInfo = new Label("Linked to master: " + object.getMasterSourceId());
             masterInfo.setStyle("-fx-text-fill: #B45309; -fx-font-size: 11px; -fx-padding: 8 0 0 0;");
@@ -515,6 +634,7 @@ public class BdocEditorApp extends Application {
                 selectedObject = restored;
                 statusLabel.setText("Restored to master: " + (restored != null ? restored.getId() : "?"));
                 renderCurrentPage();
+                refreshTree();
                 if (restored != null) {
                     updatePropertiesPane(page, masterPage, restored);
                 } else {
@@ -567,6 +687,47 @@ public class BdocEditorApp extends Application {
         );
     }
 
+    private BdocObject materializeOverrideIfNeeded(PageModel page, MasterPage masterPage, BdocObject object) {
+        if (masterPage == null || object.isMasterOverride()) {
+            return object;
+        }
+        if (masterPage.findObject(object.getId()) == null) {
+            return object;
+        }
+
+        Set<String> overridden = new HashSet<>();
+        overridden.add("geometry");
+        Geometry clonedGeometry = object.getGeometry().copy();
+
+        BdocObject override;
+        if (object instanceof TextFrame tf) {
+            override = new TextFrame(tf.getId(), tf.getLayerRef(), clonedGeometry, tf.getStoryRef(), tf.getId(), overridden);
+        } else if (object instanceof ImageFrame imf) {
+            override = new ImageFrame(imf.getId(), imf.getLayerRef(), clonedGeometry, imf.getAssetRef(), imf.getId(), overridden);
+        } else if (object instanceof VectorShape vs) {
+            override = new VectorShape(vs.getId(), vs.getLayerRef(), clonedGeometry, vs.getShapeType(), vs.getId(), overridden);
+        } else if (object instanceof HeaderFooterRule hfr) {
+            override = new HeaderFooterRule(
+                    hfr.getId(), hfr.getLayerRef(), clonedGeometry,
+                    hfr.getZone(), hfr.getTextTemplate(), hfr.getStyleRef(),
+                    hfr.getId(), overridden);
+        } else {
+            return object;
+        }
+
+        page.getObjects().add(override);
+        refreshTree();
+        return override;
+    }
+
+    private BdocObject restoreToMaster(PageModel page, MasterPage masterPage, BdocObject overrideObject) {
+        if (masterPage == null || !overrideObject.isMasterOverride()) {
+            return overrideObject;
+        }
+        page.getObjects().removeIf(o -> o.getId().equals(overrideObject.getId()) && o.isMasterOverride());
+        return masterPage.findObject(overrideObject.getMasterSourceId());
+    }
+
     private void saveDocument(DocumentHandle handle, File targetFile) throws IOException {
         ObjectMapper jsonMapper = new ObjectMapper();
         CBORMapper cborMapper = new CBORMapper();
@@ -604,7 +765,6 @@ public class BdocEditorApp extends Application {
                 }
             }
 
-            // Шаблоны мастер-страниц — новое в этой версии сохранения
             java.util.List<java.util.Map<String, Object>> templatesList = new java.util.ArrayList<>();
             for (MasterPage masterPage : handle.getTemplates().getMasterPages()) {
                 java.nio.file.Path templatePath = zipfs.getPath("/templates/" + masterPage.getId() + ".json");
