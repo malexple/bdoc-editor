@@ -80,4 +80,6 @@ public final class LineObject extends BdocObject {
 
     @Override
     public String getType() { return "LineObject"; }
+
+
 }

@@ -229,7 +229,7 @@ public final class SampleDocuments {
 
             TextFrame headingFrame = new TextFrame(
                     "text-3-heading", "layer-text",
-                    new Geometry(70.0, 120.0, 455.0, 40.0),
+                    new Geometry(70.0, 120.0, 455.0, 50.0),  // было 40.0
                     "story-3-heading"
             );
 
@@ -293,7 +293,7 @@ public final class SampleDocuments {
             // Заголовок страницы
             TextFrame headingFrame4 = new TextFrame(
                     "text-4-heading", "layer-text",
-                    new Geometry(70.0, 120.0, 455.0, 40.0),
+                    new Geometry(70.0, 120.0, 455.0, 50.0),  // было 40.0
                     "story-3-heading"
             );
 

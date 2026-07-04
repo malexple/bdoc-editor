@@ -125,7 +125,12 @@ public class PageRenderer {
                 renderImageFrame(gc, imageFrame, document);
             } else if (object instanceof HeaderFooterRule rule) {
                 renderHeaderFooterRule(gc, rule);
+            } else if (object instanceof LineObject line) {
+                renderLineObject(gc, line);
+            } else if (object instanceof TableFrame table) {
+                renderTableFrame(gc, table, document);
             }
+
         } catch (IOException e) {
             throw new RuntimeException("Failed to render object: " + object.getId(), e);
         } finally {
@@ -155,7 +160,20 @@ public class PageRenderer {
                 gc.setStroke(Color.web("#10B981"));
                 gc.setLineWidth(2.0);
                 gc.strokeRect(g.getX() - 1, g.getY() - 1, g.getWidth() + 2, g.getHeight() + 2);
+            } else if (object instanceof Group) {
+                gc.setStroke(Color.web("#7C3AED"));
+                gc.setLineWidth(2.0);
+                gc.setLineDashes(6.0, 3.0);
+                gc.strokeRect(g.getX() - 2, g.getY() - 2, g.getWidth() + 4, g.getHeight() + 4);
+                gc.setLineDashes(null);
             }
+        } else if (object.isArtifact()) {
+            Geometry g = object.getGeometry();
+            gc.setStroke(Color.web("#DC2626"));
+            gc.setLineWidth(1.0);
+            gc.setLineDashes(2.0, 2.0);
+            gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight());
+            gc.setLineDashes(null);
         } else if (isRawMaster) {
             // Объект унаследован от мастера и ещё не имеет локального override —
             // рисуем тонкую пунктирную рамку, сигнализирующую "заблокировано от мастера"
@@ -308,5 +326,112 @@ public class PageRenderer {
     public boolean isRawMasterObject(BdocObject object, MasterPage masterPage) {
         return masterPage != null && !object.isMasterOverride()
                 && masterPage.findObject(object.getId()) != null;
+    }
+
+    private void renderLineObject(GraphicsContext gc, LineObject line) {
+        gc.setStroke(Color.web(line.getStrokeColor() != null ? line.getStrokeColor() : "#000000"));
+        gc.setLineWidth(line.getStrokeWidth());
+
+        switch (line.getStrokePattern()) {
+            case "dashed" -> gc.setLineDashes(6.0, 4.0);
+            case "dotted" -> gc.setLineDashes(1.5, 3.0);
+            case "double" -> {
+                drawDoubleStroke(gc, line);
+                drawLineCaps(gc, line);
+                gc.setLineDashes(null);
+                return;
+            }
+            default -> gc.setLineDashes(null);
+        }
+
+        gc.strokeLine(line.getX1(), line.getY1(), line.getX2(), line.getY2());
+        gc.setLineDashes(null);
+        drawLineCaps(gc, line);
+    }
+
+    private void drawDoubleStroke(GraphicsContext gc, LineObject line) {
+        double dx = line.getX2() - line.getX1();
+        double dy = line.getY2() - line.getY1();
+        double len = Math.hypot(dx, dy);
+        if (len == 0) return;
+        double offsetX = -dy / len * (line.getStrokeWidth() * 0.8);
+        double offsetY = dx / len * (line.getStrokeWidth() * 0.8);
+        gc.setLineWidth(Math.max(0.5, line.getStrokeWidth() / 2.5));
+        gc.strokeLine(line.getX1() + offsetX, line.getY1() + offsetY, line.getX2() + offsetX, line.getY2() + offsetY);
+        gc.strokeLine(line.getX1() - offsetX, line.getY1() - offsetY, line.getX2() - offsetX, line.getY2() - offsetY);
+    }
+
+    private void drawLineCaps(GraphicsContext gc, LineObject line) {
+        if ("arrow".equals(line.getEndCap())) {
+            drawArrowHead(gc, line.getX1(), line.getY1(), line.getX2(), line.getY2(), line.getStrokeWidth());
+        }
+        if ("arrow".equals(line.getStartCap())) {
+            drawArrowHead(gc, line.getX2(), line.getY2(), line.getX1(), line.getY1(), line.getStrokeWidth());
+        }
+    }
+
+    private void drawArrowHead(GraphicsContext gc, double fromX, double fromY, double toX, double toY, double strokeWidth) {
+        double angle = Math.atan2(toY - fromY, toX - fromX);
+        double arrowLength = 8 + strokeWidth * 2;
+        double arrowAngle = Math.toRadians(25);
+        double x1 = toX - arrowLength * Math.cos(angle - arrowAngle);
+        double y1 = toY - arrowLength * Math.sin(angle - arrowAngle);
+        double x2 = toX - arrowLength * Math.cos(angle + arrowAngle);
+        double y2 = toY - arrowLength * Math.sin(angle + arrowAngle);
+        gc.fillPolygon(new double[]{toX, x1, x2}, new double[]{toY, y1, y2}, 3);
+    }
+
+    private void renderTableFrame(GraphicsContext gc, TableFrame table, DocumentHandle document) {
+        Geometry g = table.getGeometry();
+        double totalWidthRatio = table.getColumns().stream().mapToDouble(TableColumn::getWidthRatio).sum();
+        double totalHeightRatio = table.getRows().stream().mapToDouble(TableRow::getHeightRatio).sum();
+        if (totalWidthRatio <= 0) totalWidthRatio = table.getColumnCount();
+        if (totalHeightRatio <= 0) totalHeightRatio = table.getRowCount();
+
+        double[] colWidths = new double[table.getColumnCount()];
+        double[] rowHeights = new double[table.getRowCount()];
+        for (int c = 0; c < table.getColumnCount(); c++) {
+            double ratio = c < table.getColumns().size() ? table.getColumns().get(c).getWidthRatio() : 1.0;
+            colWidths[c] = g.getWidth() * (ratio / totalWidthRatio);
+        }
+        for (int r = 0; r < table.getRowCount(); r++) {
+            double ratio = r < table.getRows().size() ? table.getRows().get(r).getHeightRatio() : 1.0;
+            rowHeights[r] = g.getHeight() * (ratio / totalHeightRatio);
+        }
+
+        double[] colStartX = new double[table.getColumnCount() + 1];
+        colStartX[0] = g.getX();
+        for (int c = 0; c < table.getColumnCount(); c++) {
+            colStartX[c + 1] = colStartX[c] + colWidths[c];
+        }
+        double[] rowStartY = new double[table.getRowCount() + 1];
+        rowStartY[0] = g.getY();
+        for (int r = 0; r < table.getRowCount(); r++) {
+            rowStartY[r + 1] = rowStartY[r] + rowHeights[r];
+        }
+
+        gc.setStroke(Color.web("#94A3B8"));
+        gc.setLineWidth(1.0);
+        gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight());
+        for (int c = 1; c < table.getColumnCount(); c++) {
+            gc.strokeLine(colStartX[c], g.getY(), colStartX[c], g.getY() + g.getHeight());
+        }
+        for (int r = 1; r < table.getRowCount(); r++) {
+            gc.strokeLine(g.getX(), rowStartY[r], g.getX() + g.getWidth(), rowStartY[r]);
+        }
+
+        gc.setFill(Color.web("#1E293B"));
+        gc.setFont(Font.font("Georgia", 13));
+        for (TableCell cell : table.getCells()) {
+            if (cell.getStoryRef() == null) continue;
+            StoryModel cellStory = document.getStory(cell.getStoryRef());
+            if (cellStory == null) continue;
+            double cellX = colStartX[cell.getColIndex()];
+            double cellY = rowStartY[cell.getRowIndex()];
+            double cellW = colWidths[cell.getColIndex()];
+            double cellH = rowHeights[cell.getRowIndex()];
+            String text = cellStory.getJoinedText();
+            gc.fillText(text, cellX + 6, cellY + cellH / 2 + 4, cellW - 12);
+        }
     }
 }

@@ -190,7 +190,7 @@ public class BdocEditorApp extends Application {
                 BdocObject found = null;
                 for (int i = effectiveObjects.size() - 1; i >= 0; i--) {
                     BdocObject obj = effectiveObjects.get(i);
-                    if (!obj.isVisible()) continue;
+                    if (!obj.isVisible() || obj.isArtifact()) continue;   // ← добавили || obj.isArtifact()
                     Geometry g = obj.getGeometry();
                     if (e.getX() >= g.getX() && e.getX() <= g.getX() + g.getWidth() &&
                             e.getY() >= g.getY() && e.getY() <= g.getY() + g.getHeight()) {
@@ -358,8 +358,20 @@ public class BdocEditorApp extends Application {
                             + " [" + data.object.getType() + "]";
                     eyeBox.setText(label);
                     eyeBox.setOnAction(e -> {
-                        data.object.setVisible(eyeBox.isSelected());
-                        renderCurrentPage();
+                        try {
+                            PageModel page = document.loadPage(data.pageIndex);
+                            MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
+                            BdocObject target = data.isMasterLocked
+                                    ? materializeOverrideIfNeeded(page, masterPage, data.object)
+                                    : data.object;
+                            target.setVisible(eyeBox.isSelected());
+                            renderCurrentPage();
+                            if (data.isMasterLocked) {
+                                refreshTree();
+                            }
+                        } catch (IOException ex) {
+                            showError("Visibility toggle error", ex.getMessage());
+                        }
                     });
                     HBox box = new HBox(eyeBox);
                     setGraphic(box);
@@ -608,7 +620,14 @@ public class BdocEditorApp extends Application {
         CheckBox objectVisibleCheckBox = new CheckBox("Object Visible");
         objectVisibleCheckBox.setSelected(object.isVisible());
         objectVisibleCheckBox.setOnAction(e -> {
-            object.setVisible(objectVisibleCheckBox.isSelected());
+            boolean isRawMaster = pageRenderer.isRawMasterObject(object, masterPage);
+            BdocObject target = isRawMaster
+                    ? materializeOverrideIfNeeded(page, masterPage, object)
+                    : object;
+            target.setVisible(objectVisibleCheckBox.isSelected());
+            if (isRawMaster) {
+                selectedObject = target;
+            }
             renderCurrentPage();
             refreshTree();
         });
