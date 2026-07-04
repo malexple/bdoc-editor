@@ -143,7 +143,6 @@ public final class BdocIntegrityValidator {
                         + " which does not match any layer on this page");
             }
 
-            // Новая проверка: masterSourceId должен указывать на реально существующий объект мастера
             if (object.isMasterOverride()) {
                 if (masterPage == null) {
                     errors.add(pageLabel + ": object " + object.getId() + " has masterSourceId "
@@ -157,6 +156,12 @@ public final class BdocIntegrityValidator {
 
             validateObjectSpecifics(object, pageLabel, storyIds, document, errors);
         }
+
+        // Новая проверка: readingOrder ссылается только на реально существующие объекты
+        // (страницы или её MasterPage), sequence и targetObjectId не повторяются.
+        Set<String> availableObjectIds = new HashSet<>(objectIds);
+        availableObjectIds.addAll(masterObjectIds);
+        validateReadingOrder(page, availableObjectIds, pageLabel, errors);
     }
 
     private void validateObjectSpecifics(BdocObject object, String pageLabel, Set<String> storyIds,
@@ -195,5 +200,28 @@ public final class BdocIntegrityValidator {
             ids.add(style.getId());
         }
         return ids;
+    }
+
+    private void validateReadingOrder(PageModel page, Set<String> availableObjectIds, String pageLabel, List<String> errors) {
+        if (page.getReadingOrder().isEmpty()) {
+            return; // Пустой readingOrder — валидное состояние "порядок не определён"
+        }
+
+        Set<Integer> seenSequences = new HashSet<>();
+        Set<String> seenTargets = new HashSet<>();
+
+        for (ReadingSegment segment : page.getReadingOrder()) {
+            if (!seenSequences.add(segment.getSequence())) {
+                errors.add(pageLabel + ": duplicate readingOrder sequence " + segment.getSequence());
+            }
+            if (!seenTargets.add(segment.getTargetObjectId())) {
+                errors.add(pageLabel + ": object " + segment.getTargetObjectId()
+                        + " appears more than once in readingOrder");
+            }
+            if (!availableObjectIds.contains(segment.getTargetObjectId())) {
+                errors.add(pageLabel + ": readingOrder references targetObjectId "
+                        + segment.getTargetObjectId() + " which does not match any object on this page or its MasterPage");
+            }
+        }
     }
 }

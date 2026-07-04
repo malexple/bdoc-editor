@@ -194,4 +194,69 @@ class BdocIntegrityValidatorTest {
             assertTrue(ex.getErrors().stream().anyMatch(e -> e.contains("master-frame-does-not-exist")));
         }
     }
+
+    @Test
+    void unknownReadingOrderTargetIsDetected(@TempDir Path tempDir) throws Exception {
+        File file = tempDir.resolve("bad-readingorder-target.bdoc").toFile();
+
+        try (BdocContainerSerializer.Writer writer = serializer.beginWrite(file)) {
+            writer.writeStory(new StoryModel("story-1", List.of(
+                    new Paragraph("body", null, "Текст.")
+            )));
+
+            LayerModel textLayer = new LayerModel("layer-text", "Text", "text", true, 1.0);
+            PageModel page = new PageModel(
+                    "page-1", 1, 595.0, 842.0, "pt", null,
+                    List.of(textLayer),
+                    List.of(new TextFrame("frame-1", "layer-text",
+                            new Geometry(70, 120, 455, 600), "story-1")),
+                    List.of(new ReadingSegment(1, "frame-does-not-exist", "body"))
+            );
+            writer.writePage(page);
+
+            writer.finish("doc-1", "Bad Doc", "book", "0.1-composite", "ru-RU", StylesCatalog.empty());
+        }
+
+        try (DocumentHandle handle = serializer.open(file)) {
+            BdocValidationException ex = assertThrows(
+                    BdocValidationException.class, () -> validator.validate(handle));
+            assertTrue(ex.getErrors().stream().anyMatch(e -> e.contains("frame-does-not-exist")));
+        }
+    }
+
+    @Test
+    void duplicateReadingOrderSequenceIsDetected(@TempDir Path tempDir) throws Exception {
+        File file = tempDir.resolve("bad-readingorder-sequence.bdoc").toFile();
+
+        try (BdocContainerSerializer.Writer writer = serializer.beginWrite(file)) {
+            writer.writeStory(new StoryModel("story-1", List.of(
+                    new Paragraph("body", null, "Текст.")
+            )));
+
+            LayerModel textLayer = new LayerModel("layer-text", "Text", "text", true, 1.0);
+            TextFrame frameA = new TextFrame("frame-a", "layer-text",
+                    new Geometry(70, 120, 200, 300), "story-1");
+            TextFrame frameB = new TextFrame("frame-b", "layer-text",
+                    new Geometry(300, 120, 200, 300), "story-1");
+
+            PageModel page = new PageModel(
+                    "page-1", 1, 595.0, 842.0, "pt", null,
+                    List.of(textLayer),
+                    List.of(frameA, frameB),
+                    List.of(
+                            new ReadingSegment(1, "frame-a", "body"),
+                            new ReadingSegment(1, "frame-b", "body")
+                    )
+            );
+            writer.writePage(page);
+
+            writer.finish("doc-1", "Bad Doc", "book", "0.1-composite", "ru-RU", StylesCatalog.empty());
+        }
+
+        try (DocumentHandle handle = serializer.open(file)) {
+            BdocValidationException ex = assertThrows(
+                    BdocValidationException.class, () -> validator.validate(handle));
+            assertTrue(ex.getErrors().stream().anyMatch(e -> e.contains("duplicate readingOrder sequence")));
+        }
+    }
 }

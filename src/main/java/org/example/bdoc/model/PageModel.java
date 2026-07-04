@@ -15,6 +15,7 @@ public final class PageModel {
     private final String templateRef;
     private final List<LayerModel> layers;
     private final List<BdocObject> objects;
+    private final List<ReadingSegment> readingOrder;
 
     @JsonCreator
     public PageModel(
@@ -25,7 +26,8 @@ public final class PageModel {
             @JsonProperty("unit") String unit,
             @JsonProperty("templateRef") String templateRef,
             @JsonProperty("layers") List<LayerModel> layers,
-            @JsonProperty("objects") List<BdocObject> objects) {
+            @JsonProperty("objects") List<BdocObject> objects,
+            @JsonProperty("readingOrder") List<ReadingSegment> readingOrder) {
         this.id = id;
         this.index = index;
         this.width = width;
@@ -34,6 +36,13 @@ public final class PageModel {
         this.templateRef = templateRef;
         this.layers = layers != null ? layers : List.of();
         this.objects = objects != null ? objects : List.of();
+        this.readingOrder = readingOrder != null ? readingOrder : List.of();
+    }
+
+    /** Удобный конструктор без readingOrder — для случаев, когда порядок чтения ещё не размечен. */
+    public PageModel(String id, int index, double width, double height, String unit, String templateRef,
+                     List<LayerModel> layers, List<BdocObject> objects) {
+        this(id, index, width, height, unit, templateRef, layers, objects, List.of());
     }
 
     public String getId() { return id; }
@@ -44,4 +53,5 @@ public final class PageModel {
     public String getTemplateRef() { return templateRef; }
     public List<LayerModel> getLayers() { return layers; }
     public List<BdocObject> getObjects() { return objects; }
+    public List<ReadingSegment> getReadingOrder() { return readingOrder; }
 }
