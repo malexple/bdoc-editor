@@ -4,24 +4,15 @@ import org.example.bdoc.model.*;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.stream.Collectors;
 
-/**
- * Проверяет ссылочную целостность документа: то, что раньше
- * гарантировала XSD-схема (xs:ID / xs:IDREF), теперь проверяется
- * явным кодом, потому что JSON/CBOR не имеют встроенного механизма
- * проверки ссылок.
- *
- * Валидатор проходит по всем страницам документа (принудительно
- * загружая их через loadPage), поэтому вызов validate() снимает
- * все преимущества ленивой загрузки для этого прогона — он
- * предназначен для явной проверки (например, перед экспортом
- * или в тестах), а не для вызова на каждое открытие файла.
- */
 public final class BdocIntegrityValidator {
 
-    private static final Set<String> KNOWN_SHAPE_TYPES = java.util.Arrays.stream(ShapeType.values())
+    private static final Set<String> KNOWN_SHAPE_TYPES = Arrays.stream(ShapeType.values())
             .map(ShapeType::toJsonValue)
-            .collect(java.util.stream.Collectors.toSet());
+            .collect(Collectors.toSet());
+
+    private static final Set<String> KNOWN_REFERENCE_TARGET_TYPES = Set.of("url", "object", "page");
 
     private Set<String> collectCharacterStyleIds(StylesCatalog styles) {
         Set<String> ids = new HashSet<>();
@@ -37,8 +28,14 @@ public final class BdocIntegrityValidator {
         Set<String> storyIds = document.getStoryIds();
         Set<String> knownParagraphStyleIds = collectParagraphStyleIds(document.getStyles());
 
-        validateStories(document, storyIds, knownParagraphStyleIds, errors);
-        validatePages(document, storyIds, errors);
+        List<PageModel> allPages = loadAllPages(document, errors);
+        Set<String> allObjectIds = collectAllObjectIds(allPages, document);
+        Set<String> allPageIds = allPages.stream().map(PageModel::getId).collect(Collectors.toSet());
+        Map<String, TextFrame> allTextFramesById = collectAllTextFrames(allPages);
+
+        validateStories(document, storyIds, knownParagraphStyleIds, allObjectIds, allPageIds, errors);
+        validatePages(document, storyIds, allPages, errors);
+        validateTextThreading(allTextFramesById, errors);
 
         if (!errors.isEmpty()) {
             throw new BdocValidationException(
@@ -46,8 +43,58 @@ public final class BdocIntegrityValidator {
         }
     }
 
+    private List<PageModel> loadAllPages(DocumentHandle document, List<String> errors) {
+        List<PageModel> pages = new ArrayList<>();
+        for (int index : new TreeSet<>(document.getPageIndices())) {
+            try {
+                pages.add(document.loadPage(index));
+            } catch (IOException e) {
+                errors.add("Page index " + index + ": failed to load page file: " + e.getMessage());
+            }
+        }
+        return pages;
+    }
+
+    /**
+     * Глобальный индекс всех object id по документу — используется для
+     * проверки Reference(targetType="object"), которая может ссылаться
+     * на объект на ЛЮБОЙ странице (например, "см. рис. 3" на другой странице).
+     * Также подмешивает объекты MasterPage для каждого встретившегося templateRef.
+     */
+    private Set<String> collectAllObjectIds(List<PageModel> pages, DocumentHandle document) {
+        Set<String> ids = new HashSet<>();
+        Set<String> processedTemplates = new HashSet<>();
+        for (PageModel page : pages) {
+            for (BdocObject object : page.getObjects()) {
+                ids.add(object.getId());
+            }
+            if (page.getTemplateRef() != null && processedTemplates.add(page.getTemplateRef())) {
+                MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
+                if (masterPage != null) {
+                    for (BdocObject object : masterPage.getObjects()) {
+                        ids.add(object.getId());
+                    }
+                }
+            }
+        }
+        return ids;
+    }
+
+    private Map<String, TextFrame> collectAllTextFrames(List<PageModel> pages) {
+        Map<String, TextFrame> map = new HashMap<>();
+        for (PageModel page : pages) {
+            for (BdocObject object : page.getObjects()) {
+                if (object instanceof TextFrame tf) {
+                    map.put(tf.getId(), tf);
+                }
+            }
+        }
+        return map;
+    }
+
     private void validateStories(DocumentHandle document, Set<String> storyIds,
-                                 Set<String> knownParagraphStyleIds, List<String> errors) {
+                                 Set<String> knownParagraphStyleIds, Set<String> allObjectIds,
+                                 Set<String> allPageIds, List<String> errors) {
 
         Set<String> knownCharacterStyleIds = collectCharacterStyleIds(document.getStyles());
 
@@ -68,17 +115,105 @@ public final class BdocIntegrityValidator {
                 }
 
                 for (int j = 0; j < paragraph.getSpans().size(); j++) {
-                    String charStyleRef = paragraph.getSpans().get(j).getCharacterStyleRef();
-                    if (charStyleRef != null && !knownCharacterStyleIds.contains(charStyleRef)) {
-                        errors.add("Story '" + storyId + "', paragraph[" + i + "], span[" + j + "]: " +
-                                "characterStyleRef '" + charStyleRef + "' does not match any CharacterStyle in styles.json");
+                    Span span = paragraph.getSpans().get(j);
+                    String spanLabel = "Story '" + storyId + "', paragraph[" + i + "], span[" + j + "]";
+
+                    if (span.getCharacterStyleRef() != null && !knownCharacterStyleIds.contains(span.getCharacterStyleRef())) {
+                        errors.add(spanLabel + ": characterStyleRef '" + span.getCharacterStyleRef()
+                                + "' does not match any CharacterStyle in styles.json");
                     }
+
+                    if (span.getInlineAssetRef() != null && !document.hasResource(span.getInlineAssetRef())) {
+                        errors.add(spanLabel + ": inlineAssetRef '" + span.getInlineAssetRef()
+                                + "' does not exist in resources/");
+                    }
+
+                    validateFootnote(span.getFootnote(), spanLabel, errors);
+                    validateReference(span.getReference(), spanLabel, allObjectIds, allPageIds, errors);
                 }
             }
         }
     }
 
-    private void validatePages(DocumentHandle document, Set<String> storyIds, List<String> errors) {
+    /**
+     * На Этапе 1.5 нумерация сносок хранится явно (String number), поэтому
+     * проверяется только заполненность поля. Уникальность номера в рамках
+     * Story — намеренно НЕ жёсткая ошибка: в оригиналах книг сноски могут
+     * повторно использовать звёздочки/литеры на разных страницах.
+     */
+    private void validateFootnote(FootnoteModel footnote, String spanLabel, List<String> errors) {
+        if (footnote == null) return;
+        if (footnote.getNumber() == null || footnote.getNumber().isBlank()) {
+            errors.add(spanLabel + ": footnote is present but has no number");
+        }
+    }
+
+    private void validateReference(ReferenceModel reference, String spanLabel,
+                                   Set<String> allObjectIds, Set<String> allPageIds, List<String> errors) {
+        if (reference == null) return;
+
+        String targetType = reference.getTargetType();
+        String target = reference.getTarget();
+
+        if (targetType == null || !KNOWN_REFERENCE_TARGET_TYPES.contains(targetType)) {
+            errors.add(spanLabel + ": reference has unknown targetType '" + targetType + "'");
+            return;
+        }
+        if (target == null || target.isBlank()) {
+            errors.add(spanLabel + ": reference has empty target for targetType '" + targetType + "'");
+            return;
+        }
+
+        switch (targetType) {
+            case "object" -> {
+                if (!allObjectIds.contains(target)) {
+                    errors.add(spanLabel + ": reference targetType=object points to '" + target
+                            + "' which does not match any object in the document");
+                }
+            }
+            case "page" -> {
+                if (!allPageIds.contains(target)) {
+                    errors.add(spanLabel + ": reference targetType=page points to '" + target
+                            + "' which does not match any page id in the document");
+                }
+            }
+            case "url" -> { /* внешние URL не проверяются на достижимость на этапе валидации */ }
+        }
+    }
+
+    /**
+     * Проверяет ссылочную целостность цепочек перетекания текста:
+     * nextFrameRef/previousFrameRef должны указывать на существующие
+     * TextFrame, цепочка должна быть симметричной (A.next == B => B.prev == A),
+     * и оба фрейма цепочки должны ссылаться на одну и ту же Story.
+     */
+    private void validateTextThreading(Map<String, TextFrame> textFramesById, List<String> errors) {
+        for (TextFrame frame : textFramesById.values()) {
+            if (frame.getNextFrameRef() != null) {
+                TextFrame next = textFramesById.get(frame.getNextFrameRef());
+                if (next == null) {
+                    errors.add("TextFrame '" + frame.getId() + "' has nextFrameRef '" + frame.getNextFrameRef()
+                            + "' which does not match any TextFrame in the document");
+                } else {
+                    if (!Objects.equals(next.getStoryRef(), frame.getStoryRef())) {
+                        errors.add("TextFrame '" + frame.getId() + "' is threaded to '" + next.getId()
+                                + "' but they reference different stories ('" + frame.getStoryRef()
+                                + "' vs '" + next.getStoryRef() + "')");
+                    }
+                    if (!frame.getId().equals(next.getPreviousFrameRef())) {
+                        errors.add("TextFrame '" + frame.getId() + "' points to nextFrameRef '" + next.getId()
+                                + "' but that frame's previousFrameRef does not point back (broken chain)");
+                    }
+                }
+            }
+            if (frame.getPreviousFrameRef() != null && !textFramesById.containsKey(frame.getPreviousFrameRef())) {
+                errors.add("TextFrame '" + frame.getId() + "' has previousFrameRef '" + frame.getPreviousFrameRef()
+                        + "' which does not match any TextFrame in the document");
+            }
+        }
+    }
+
+    private void validatePages(DocumentHandle document, Set<String> storyIds, List<PageModel> allPages, List<String> errors) {
         Set<Integer> pageIndices = document.getPageIndices();
         if (pageIndices.isEmpty()) {
             errors.add("Document has no pages: a document must contain at least one page");
@@ -87,19 +222,11 @@ public final class BdocIntegrityValidator {
         validatePageIndexSequence(pageIndices, errors);
 
         Set<String> pageIdsSeen = new HashSet<>();
-        for (int index : new TreeSet<>(pageIndices)) {
-            PageModel page;
-            try {
-                page = document.loadPage(index);
-            } catch (IOException e) {
-                errors.add("Page index " + index + ": failed to load page file: " + e.getMessage());
-                continue;
-            }
+        for (PageModel page : allPages) {
             if (!pageIdsSeen.add(page.getId())) {
                 errors.add("Duplicate page id: " + page.getId() + ": page ids must be unique across the document");
             }
 
-            // Новая проверка: templateRef должен указывать на существующий MasterPage
             if (page.getTemplateRef() != null && document.getMasterPage(page.getTemplateRef()) == null) {
                 errors.add("Page " + page.getId() + " has templateRef " + page.getTemplateRef()
                         + " which does not match any MasterPage in templates.json");
@@ -134,7 +261,7 @@ public final class BdocIntegrityValidator {
 
         MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
         Set<String> masterObjectIds = masterPage != null
-                ? masterPage.getObjects().stream().map(BdocObject::getId).collect(java.util.stream.Collectors.toSet())
+                ? masterPage.getObjects().stream().map(BdocObject::getId).collect(Collectors.toSet())
                 : Set.of();
 
         Set<String> objectIds = new HashSet<>();
@@ -161,8 +288,6 @@ public final class BdocIntegrityValidator {
             validateObjectSpecifics(object, pageLabel, storyIds, document, errors);
         }
 
-        // Новая проверка: readingOrder ссылается только на реально существующие объекты
-        // (страницы или её MasterPage), sequence и targetObjectId не повторяются.
         Set<String> availableObjectIds = new HashSet<>(objectIds);
         availableObjectIds.addAll(masterObjectIds);
         validateReadingOrder(page, availableObjectIds, pageLabel, errors);
@@ -210,7 +335,7 @@ public final class BdocIntegrityValidator {
 
     private void validateReadingOrder(PageModel page, Set<String> availableObjectIds, String pageLabel, List<String> errors) {
         if (page.getReadingOrder().isEmpty()) {
-            return; // Пустой readingOrder — валидное состояние "порядок не определён"
+            return;
         }
 
         Set<Integer> seenSequences = new HashSet<>();
@@ -239,8 +364,6 @@ public final class BdocIntegrityValidator {
                         + ") and must be excluded from the reading flow");
             }
         }
-
-
     }
 
     private void validateGroups(PageModel page, Set<String> objectIds, List<String> errors, String pageLabel) {
@@ -322,6 +445,4 @@ public final class BdocIntegrityValidator {
             }
         }
     }
-
-
 }
