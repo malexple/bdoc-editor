@@ -262,6 +262,7 @@ public class PageRenderer {
      * будущее без изменения сигнатуры метода.
      */
     private void renderContour(GraphicsContext gc, PathModel pathData) {
+        gc.save();
         gc.setFillRule("even-odd".equals(pathData.getFillRule()) ? FillRule.EVEN_ODD : FillRule.NON_ZERO);
         gc.beginPath();
         for (PathPoint p : pathData.getPoints()) {
@@ -269,11 +270,15 @@ public class PageRenderer {
                 case "M" -> gc.moveTo(p.getX(), p.getY());
                 case "L" -> gc.lineTo(p.getX(), p.getY());
                 case "C" -> gc.bezierCurveTo(p.getX1(), p.getY1(), p.getX2(), p.getY2(), p.getX(), p.getY());
-                default -> { /* неизвестная команда — игнорируем, не роняем рендер */ }
+                default -> { }
             }
         }
         gc.closePath();
+
+        gc.setFill(Color.web("#475569", 0.6));
+        gc.fill();
         gc.stroke();
+        gc.restore();
     }
 
     private void renderHeaderFooterRule(GraphicsContext gc, HeaderFooterRule rule) {

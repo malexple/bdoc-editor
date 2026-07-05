@@ -419,6 +419,20 @@ public class BdocEditorApp extends Application {
             currentPageIndex = data.pageIndex;
             selectedObject = null;
             propertiesContainer.getChildren().clear();
+
+            try {
+                PageModel page = document.loadPage(currentPageIndex);
+                Unit currentUnit = Unit.fromString(page.getUnit());
+                double displayW = currentUnit.fromPoints(page.getWidth());
+                double displayH = currentUnit.fromPoints(page.getHeight());
+
+                statusLabel.setText(String.format(
+                        "Active Page: %d | Format: %.1f × %.1f %s (%.0f × %.0f pt)",
+                        currentPageIndex, displayW, displayH, page.getUnit(), page.getWidth(), page.getHeight()));
+            } catch (IOException ex) {
+                statusLabel.setText("Page selected (Render Error)");
+            }
+
             renderCurrentPage();
             return;
         }
@@ -623,6 +637,17 @@ public class BdocEditorApp extends Application {
         Label objectInfo = new Label("Object ID: " + object.getId() + "\nType: " + object.getType());
         objectInfo.setStyle("-fx-text-fill: #475569;");
 
+        Unit currentUnit = Unit.fromString(page.getUnit());
+        Geometry go = object.getGeometry();
+        Label geometryInfo = new Label(String.format(
+                "Geometry (%s):\nX: %.1f, Y: %.1f\nW: %.1f, H: %.1f",
+                page.getUnit(),
+                currentUnit.fromPoints(go.getX()),
+                currentUnit.fromPoints(go.getY()),
+                currentUnit.fromPoints(go.getWidth()),
+                currentUnit.fromPoints(go.getHeight())));
+        geometryInfo.setStyle("-fx-text-fill: #1E293B; -fx-font-family: 'Consolas'; -fx-font-size: 11px; -fx-padding: 5 0 5 0;");
+
         Label layerLabel = new Label("Layer: " + objectLayer.getName() + " (" + objectLayer.getRole() + ")");
         layerLabel.setStyle("-fx-font-weight: bold; -fx-padding: 10 0 0 0;");
 
@@ -660,6 +685,7 @@ public class BdocEditorApp extends Application {
 
         propertiesContainer.getChildren().addAll(
                 objectInfo,
+                geometryInfo,
                 new Separator(),
                 layerLabel,
                 visibleCheckBox,

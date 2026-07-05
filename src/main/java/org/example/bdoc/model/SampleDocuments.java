@@ -419,12 +419,44 @@ public final class SampleDocuments {
                     )),
                     null
             );
+
+            // CompoundPath демо: буква "О" — два восьмиугольника (внешний + внутренний)
+            // в ОДНОМ PathModel. EVEN_ODD оставит центр прозрачным — фон сквозь дырку.
+            VectorShape letterODemo = new VectorShape(
+                    "shape-letter-o-1", "layer-decor",
+                    new Geometry(220.0, 620.0, 100.0, 100.0),
+                    "polygon",
+                    null, null, true,
+                    null, null, false, false, null, null,
+                    new PathModel("compound", List.of(
+                            // Внешний восьмиугольник (центр 270,670, радиус 50)
+                            PathPoint.moveTo(270.0, 620.0),
+                            PathPoint.lineTo(305.4, 634.6),
+                            PathPoint.lineTo(320.0, 670.0),
+                            PathPoint.lineTo(305.4, 705.4),
+                            PathPoint.lineTo(270.0, 720.0),
+                            PathPoint.lineTo(234.6, 705.4),
+                            PathPoint.lineTo(220.0, 670.0),
+                            PathPoint.lineTo(234.6, 634.6),
+                            // Внутренний восьмиугольник (тот же центр, радиус 25) — дырка
+                            PathPoint.moveTo(270.0, 645.0),
+                            PathPoint.lineTo(287.7, 652.3),
+                            PathPoint.lineTo(295.0, 670.0),
+                            PathPoint.lineTo(287.7, 687.7),
+                            PathPoint.lineTo(270.0, 695.0),
+                            PathPoint.lineTo(252.3, 687.7),
+                            PathPoint.lineTo(245.0, 670.0),
+                            PathPoint.lineTo(252.3, 652.3)
+                    ), "even-odd"),
+                    null
+            );
+
             PageModel page4 = new PageModel(
                     "page-4", 4, 595.0, 842.0, "pt", "master-A",
                     List.of(decorLayer4, textLayer4, footerLayer4),
                     List.of(headingFrame4, divider4, iconDecor, captionFrame, cardGroup,
                             maskStar, maskedShape, priceTable,
-                            ellipseDemo, rotatedRectDemo, polygonDemo,
+                            ellipseDemo, rotatedRectDemo, polygonDemo, letterODemo,
                             footerArtifact4),
                     readingOrder4
             );
