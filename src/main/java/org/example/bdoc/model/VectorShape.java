@@ -48,6 +48,26 @@ public final class VectorShape extends BdocObject {
         this.shapeType = shapeType;
     }
 
+    /**
+     * Полный конструктор для Этапа 1.6: добавляет objectStyleRef (каскад
+     * ObjectStyle), локальную opacity и AnchoredObjectSettings. Не помечен
+     * @JsonCreator — используется только для программного создания объектов
+     * (например, в SampleDocuments), десериализация JSON/CBOR продолжает
+     * идти через конструктор выше с 15 параметрами.
+     */
+    public VectorShape(
+            String id, String layerRef, Geometry geometry, String shapeType,
+            String masterSourceId, Set<String> overriddenProperties,
+            Boolean visible, Geometry clipGeometry, String maskRef,
+            Boolean mask, Boolean artifact, String artifactType,
+            TextWrapModel textWrap, PathModel pathData, TransformModel transform,
+            String objectStyleRef, Double opacity, AnchoredObjectSettings anchoredSettings) {
+        super(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
+                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData, transform,
+                objectStyleRef, opacity, anchoredSettings);
+        this.shapeType = shapeType;
+    }
+
     public String getShapeType() { return shapeType; }
 
     @Override

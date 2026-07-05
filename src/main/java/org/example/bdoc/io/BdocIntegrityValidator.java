@@ -286,6 +286,8 @@ public final class BdocIntegrityValidator {
             }
 
             validateObjectSpecifics(object, pageLabel, storyIds, document, errors);
+            validateObjectStyleRef(object, document.getStyles(), pageLabel, errors);
+            validateAnchoredSettings(object, storyIds, document, pageLabel, errors);
         }
 
         Set<String> availableObjectIds = new HashSet<>(objectIds);
@@ -442,6 +444,38 @@ public final class BdocIntegrityValidator {
             } else if (!target.isMask()) {
                 errors.add(pageLabel + ": object " + object.getId() + " has maskRef " + object.getMaskRef()
                         + " but target object is not marked as mask=true");
+            }
+        }
+    }
+
+    private void validateObjectStyleRef(BdocObject object, StylesCatalog styles, String pageLabel, List<String> errors) {
+        if (object.getObjectStyleRef() == null) return;
+        if (styles.findObjectStyle(object.getObjectStyleRef()) == null) {
+            errors.add(pageLabel + ": object '" + object.getId() + "' has objectStyleRef '"
+                    + object.getObjectStyleRef() + "' which does not match any ObjectStyle in styles.json");
+        }
+    }
+
+    private void validateAnchoredSettings(BdocObject object, Set<String> storyIds, DocumentHandle document,
+                                          String pageLabel, List<String> errors) {
+        AnchoredObjectSettings settings = object.getAnchoredSettings();
+        if (settings == null || !settings.isEnabled()) return;
+
+        if (!storyIds.contains(settings.getStoryRef())) {
+            errors.add(pageLabel + ": anchored object '" + object.getId() + "' references non-existing storyRef '"
+                    + settings.getStoryRef() + "'");
+            return;
+        }
+
+        StoryModel story = document.getStory(settings.getStoryRef());
+        if (story != null) {
+            int totalSpans = story.getParagraphs().stream()
+                    .mapToInt(p -> p.getSpans().size())
+                    .sum();
+            if (settings.getTargetSpanIndex() < 0 || settings.getTargetSpanIndex() >= totalSpans) {
+                errors.add(pageLabel + ": anchored object '" + object.getId() + "' has targetSpanIndex ["
+                        + settings.getTargetSpanIndex() + "] out of bounds for story '"
+                        + settings.getStoryRef() + "' (total spans: " + totalSpans + ")");
             }
         }
     }

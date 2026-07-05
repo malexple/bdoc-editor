@@ -37,6 +37,7 @@ public final class SampleDocuments {
             writePage3(writer);
             writePage4(writer);
             writePage5(writer);
+            writePage6(writer);
 
             writer.finish(
                     "doc-1", "BDoc Demo", "book",
@@ -547,7 +548,8 @@ public final class SampleDocuments {
 
         return new StylesCatalog(
                 List.of(bodyStyle, headingStyle, footerStyle, quoteStyle),
-                List.of(boldEmphasis, footnoteMarker, referenceLink)
+                List.of(boldEmphasis, footnoteMarker, referenceLink),
+                buildObjectStyles()
         );
     }
 
@@ -580,5 +582,107 @@ public final class SampleDocuments {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ImageIO.write(image, "png", baos);
         return baos.toByteArray();
+    }
+
+    private static List<ObjectStyle> buildObjectStyles() {
+        ObjectStyle cardStyleBase = new ObjectStyle(
+                "card-style-base", null, "layer-decor",
+                null, 16.0, 16.0, null
+        );
+        ObjectStyle cardStyleHighlighted = new ObjectStyle(
+                "card-style-highlighted", "card-style-base", null,
+                0.6, null, null, null
+        );
+        return List.of(cardStyleBase, cardStyleHighlighted);
+    }
+
+    // ==================== Страница 6: ObjectStyle, каскад, AnchoredObjectSettings (Этап 1.6) ====================
+
+    // ==================== Страница 6: ObjectStyle, каскад, AnchoredObjectSettings (Этап 1.6) ====================
+
+    /**
+     * Демонстрирует все четыре аспекта Этапа 1.6:
+     *  1. ObjectStyle с basedOn: "card-style-highlighted" наследует
+     *     arcWidth/arcHeight от "card-style-base", переопределяя только opacity.
+     *  2. Фрейм БЕЗ локальных полей — целиком берёт arcWidth/arcHeight/opacity из стиля.
+     *  3. Фрейм с локальным Geometry.arcWidth=0.0 — острый угол, несмотря на objectStyleRef
+     *     (локальное значение перебивает каскад стиля).
+     *  4. AnchoredObjectSettings — декоративная иконка привязана к story-5 (span[2],
+     *     т.е. footnote-маркер), positionMode="custom", смещение offsetX/offsetY пока
+     *     не участвует в рендере (математика anchored objects отложена на Этап 2).
+     */
+    private static void writePage6(Writer writer) throws IOException {
+        StoryModel story6 = new StoryModel("story-6", List.of(
+                new Paragraph("heading", "heading-1", "ObjectStyle и AnchoredObjectSettings (Этап 1.6)"),
+                new Paragraph("body", "body-text",
+                        "1) card-style-highlighted наследует arcWidth/arcHeight от card-style-base через basedOn. "
+                                + "2) Левая карточка целиком берёт вид из стиля. "
+                                + "3) Правая карточка переопределяет arcWidth=0 локально, игнорируя стиль. "
+                                + "4) Иконка снизу привязана к story-5 через AnchoredObjectSettings.")
+        ));
+        writer.writeStory(story6);
+
+        LayerModel decorLayer6 = new LayerModel("layer-decor", "Decoration", "decoration", true, 1.0);
+        LayerModel textLayer6 = new LayerModel("layer-text", "Text", "text", true, 1.0);
+        LayerModel footerLayer6 = new LayerModel("layer-footer", "Footer", "header-footer", true, 1.0);
+
+        // Пункты 1-2: фрейм полностью наследует вид из "card-style-highlighted"
+        // (arcWidth/arcHeight из card-style-base через basedOn, opacity=0.6 своя).
+        VectorShape styledCardInherited = new VectorShape(
+                "shape-styled-inherited", "layer-decor",
+                new Geometry(70.0, 120.0, 200.0, 120.0),
+                "rounded-rectangle",
+                null, null, true,
+                null, null, false, false, null,
+                null, null, null,
+                "card-style-highlighted", null, null
+        );
+
+        // Пункт 3: тот же objectStyleRef, но локальный Geometry.arcWidth=0.0
+        // явно перебивает каскад стиля — угол острый, несмотря на стиль.
+        VectorShape styledCardOverride = new VectorShape(
+                "shape-styled-override", "layer-decor",
+                new Geometry(325.0, 120.0, 200.0, 120.0, 0.0, 0.0),
+                "rectangle",
+                null, null, true,
+                null, null, false, false, null,
+                null, null, null,
+                "card-style-highlighted", null, null
+        );
+
+        // Пункт 4: декоративная иконка, привязанная к story-5 (span с индексом 2 —
+        // footnote-маркер "¹"), positionMode="custom", offsetX/Y хранятся, но пока
+        // не влияют на рендер (реальная математика — Этап 2).
+        AnchoredObjectSettings anchorSettings = new AnchoredObjectSettings(
+                true, "story-5", 2, "custom", 15.0, -10.0
+        );
+
+        VectorShape anchoredIcon = new VectorShape(
+                "shape-anchored-icon", "layer-decor",
+                new Geometry(240.0, 280.0, 40.0, 40.0, 6.0, 6.0),
+                "rounded-rectangle",
+                null, null, true,
+                null, null, false, false, null,
+                null, null, null,
+                null, null, anchorSettings
+        );
+
+        TextFrame captionFrame6 = new TextFrame(
+                "text-6-caption", "layer-text",
+                new Geometry(70.0, 350.0, 455.0, 150.0),
+                "story-6"
+        );
+
+        List<ReadingSegment> readingOrder6 = List.of(
+                new ReadingSegment(1, "text-6-caption", "body")
+        );
+
+        PageModel page6 = new PageModel(
+                "page-6", 6, 595.0, 842.0, "pt", "master-A",
+                List.of(decorLayer6, textLayer6, footerLayer6),
+                List.of(styledCardInherited, styledCardOverride, anchoredIcon, captionFrame6),
+                readingOrder6
+        );
+        writer.writePage(page6);
     }
 }

@@ -116,12 +116,13 @@ public class PageRenderer {
                               boolean isRawMaster) {
         CharacterStyleResolver characterStyleResolver = new CharacterStyleResolver(document.getStyles());
 
-        gc.setGlobalAlpha(layer.getOpacity());
+        double effectiveOpacity = ObjectStyleResolver.resolveOpacity(object, document.getStyles());
+        gc.setGlobalAlpha(layer.getOpacity() * effectiveOpacity);
         gc.save();
         applyTransform(gc, object);
         try {
             if (object instanceof VectorShape shape) {
-                renderShape(gc, shape);
+                renderShape(gc, shape, document.getStyles());
             } else if (object instanceof TextFrame textFrame) {
                 renderTextFrame(gc, textFrame, document.getStory(textFrame.getStoryRef()), styleResolver, characterStyleResolver);
             } else if (object instanceof ImageFrame imageFrame) {
@@ -218,7 +219,7 @@ public class PageRenderer {
         return false; // placeholder до реализации в BdocEditorApp
     }
 
-    private void renderShape(GraphicsContext gc, VectorShape shape) {
+    private void renderShape(GraphicsContext gc, VectorShape shape, StylesCatalog styles) {
         Geometry g = shape.getGeometry();
         gc.setStroke(Color.web("#2F4858"));
         gc.setLineWidth(2.0);
@@ -234,8 +235,8 @@ public class PageRenderer {
             case "rectangle" -> gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight());
             case "rounded-rectangle" -> gc.strokeRoundRect(
                     g.getX(), g.getY(), g.getWidth(), g.getHeight(),
-                    g.getArcWidth() != null ? g.getArcWidth() : 0,
-                    g.getArcHeight() != null ? g.getArcHeight() : 0);
+                    ObjectStyleResolver.resolveArcWidth(shape, styles),
+                    ObjectStyleResolver.resolveArcHeight(shape, styles));
             case "line" -> gc.strokeLine(g.getX(), g.getY(), g.getX() + g.getWidth(), g.getY() + g.getHeight());
             case "ellipse" -> gc.strokeOval(g.getX(), g.getY(), g.getWidth(), g.getHeight());
             case "polygon" -> gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight()); // fallback, если pathData пуст

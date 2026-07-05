@@ -36,27 +36,26 @@ public abstract class BdocObject {
     protected final String artifactType;
     protected final TextWrapModel textWrap;
     protected final TransformModel transform;
-
-    // Произвольный контур (маска, кастомная форма VectorShape). Не связан с
-    // textWrap.pathData — то поле описывает контур обтекания текста вокруг
-    // объекта, а это поле описывает форму самого объекта, когда он выступает
-    // как маска (mask=true) или как контурная фигура. null по умолчанию,
-    // а не PathModel.primitive() — так проще отличить "контур не задан"
-    // от "контур задан, но примитивный", что важно для сериализации.
     protected final PathModel pathData;
 
+    // Этап 1.6: стиль объекта (ObjectStyle), локальная прозрачность
+    // и декларативная заготовка привязки к слову в тексте.
+    protected final String objectStyleRef;
+    protected final Double opacity;
+    protected final AnchoredObjectSettings anchoredSettings;
+
     protected BdocObject(String id, String layerRef, Geometry geometry) {
-        this(id, layerRef, geometry, null, null, true, null, null, false, false, null, null, null, null);
+        this(id, layerRef, geometry, null, null, true, null, null, false, false, null, null, null, null, null, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
                          String masterSourceId, Set<String> overriddenProperties) {
-        this(id, layerRef, geometry, masterSourceId, overriddenProperties, true, null, null, false, false, null, null, null, null);
+        this(id, layerRef, geometry, masterSourceId, overriddenProperties, true, null, null, false, false, null, null, null, null, null, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
                          String masterSourceId, Set<String> overriddenProperties, Boolean visible) {
-        this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible, null, null, false, false, null, null, null, null);
+        this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible, null, null, false, false, null, null, null, null, null, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
@@ -64,7 +63,7 @@ public abstract class BdocObject {
                          Geometry clipGeometry, String maskRef, Boolean mask,
                          Boolean artifact, String artifactType, TextWrapModel textWrap) {
         this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
-                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, null, null);
+                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, null, null, null, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
@@ -73,7 +72,7 @@ public abstract class BdocObject {
                          Boolean artifact, String artifactType, TextWrapModel textWrap,
                          PathModel pathData) {
         this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
-                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData, null);
+                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData, null, null, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
@@ -81,6 +80,16 @@ public abstract class BdocObject {
                          Geometry clipGeometry, String maskRef, Boolean mask,
                          Boolean artifact, String artifactType, TextWrapModel textWrap,
                          PathModel pathData, TransformModel transform) {
+        this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
+                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData, transform, null, null, null);
+    }
+
+    protected BdocObject(String id, String layerRef, Geometry geometry,
+                         String masterSourceId, Set<String> overriddenProperties, Boolean visible,
+                         Geometry clipGeometry, String maskRef, Boolean mask,
+                         Boolean artifact, String artifactType, TextWrapModel textWrap,
+                         PathModel pathData, TransformModel transform,
+                         String objectStyleRef, Double opacity, AnchoredObjectSettings anchoredSettings) {
         this.id = id;
         this.layerRef = layerRef;
         this.geometry = geometry;
@@ -95,6 +104,9 @@ public abstract class BdocObject {
         this.textWrap = textWrap != null ? textWrap : TextWrapModel.disabled();
         this.pathData = pathData;
         this.transform = transform != null ? transform : TransformModel.identity();
+        this.objectStyleRef = objectStyleRef;
+        this.opacity = opacity;
+        this.anchoredSettings = anchoredSettings;
     }
 
     public TransformModel getTransform() { return transform; }
@@ -114,6 +126,10 @@ public abstract class BdocObject {
     public String getArtifactType() { return artifactType; }
     public TextWrapModel getTextWrap() { return textWrap; }
     public PathModel getPathData() { return pathData; }
+
+    public String getObjectStyleRef() { return objectStyleRef; }
+    public Double getOpacity() { return opacity; }
+    public AnchoredObjectSettings getAnchoredSettings() { return anchoredSettings; }
 
     public abstract String getType();
 }
