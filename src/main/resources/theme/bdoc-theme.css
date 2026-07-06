@@ -230,3 +230,80 @@
     -fx-text-fill: white;
     -fx-border-color: -fx-accent;
 }
+
+/* ---------- MenuBar ---------- */
+
+.menu-bar {
+    -fx-background-color: -fx-panel-bg-darker;
+    -fx-border-color: transparent transparent -fx-border-subtle transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.menu-bar .label {
+    -fx-text-fill: -fx-text-primary;
+}
+
+.menu:hover, .menu:showing {
+    -fx-background-color: derive(-fx-panel-bg, 20%);
+}
+
+.context-menu {
+    -fx-background-color: -fx-panel-bg;
+    -fx-border-color: -fx-border-subtle;
+}
+
+.menu-item {
+    -fx-background-color: -fx-panel-bg;
+}
+
+.menu-item .label {
+    -fx-text-fill: -fx-text-primary;
+}
+
+.menu-item:focused {
+    -fx-background-color: -fx-accent;
+}
+
+.menu-item:disabled .label {
+    -fx-text-fill: -fx-text-secondary;
+    -fx-opacity: 0.5;
+}
+
+/* ---------- File ToolBar ---------- */
+
+.bdoc-file-toolbar {
+    -fx-background-color: -fx-panel-bg-darker;
+    -fx-padding: 4 8 4 8;
+    -fx-spacing: 6;
+}
+
+/* ---------- Вертикальная палитра инструментов ---------- */
+
+.bdoc-tool-palette {
+    -fx-background-color: -fx-panel-bg-darker;
+    -fx-padding: 6 4 6 4;
+    -fx-spacing: 4;
+    -fx-border-color: transparent -fx-border-subtle transparent transparent;
+    -fx-border-width: 0 1 0 0;
+}
+
+.bdoc-tool-palette-button {
+    -fx-min-width: 36;
+    -fx-min-height: 36;
+    -fx-max-width: 36;
+    -fx-max-height: 36;
+    -fx-background-color: transparent;
+    -fx-background-radius: 4;
+    -fx-text-fill: -fx-text-primary;
+    -fx-font-size: 14px;
+    -fx-cursor: hand;
+}
+
+.bdoc-tool-palette-button:hover {
+    -fx-background-color: derive(-fx-panel-bg, 15%);
+}
+
+.bdoc-tool-palette-button:selected {
+    -fx-background-color: -fx-accent;
+    -fx-text-fill: white;
+}

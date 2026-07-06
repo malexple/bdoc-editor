@@ -121,6 +121,7 @@ public class BdocEditorApp extends Application implements EditorContext {
         BorderPane propertiesPane = new BorderPane();
         propertiesPane.setPadding(new Insets(12));
         propertiesPane.setPrefWidth(240);
+        propertiesPane.getStyleClass().add("bdoc-properties-pane");
         Label propTitle = new Label("Properties & Layers");
         propTitle.getStyleClass().add("bdoc-section-title");
         propertiesPane.setTop(propTitle);
@@ -131,29 +132,29 @@ public class BdocEditorApp extends Application implements EditorContext {
 
         SplitPane splitPane = new SplitPane(documentTree, canvasPane, propertiesPane);
         splitPane.setDividerPositions(0.22, 0.76);
+
         statusLabel = new Label("No document loaded");
+        statusLabel.getStyleClass().add("bdoc-status-bar");
+        statusLabel.setMaxWidth(Double.MAX_VALUE);
 
-        ToolBar toolBar = buildDynamicToolBar();
+        MenuBar menuBar = buildMenuBar(stage, splitPane, documentTree, propertiesPane);
+        ToolBar fileToolBar = buildFileToolBar(stage);
+        ToolBar toolPalette = buildToolPalette();
 
-        Button openBtn = new Button("Open");
-        openBtn.setOnAction(e -> onOpen(stage));
-        Button saveAsBtn = new Button("Save As");
-        saveAsBtn.setOnAction(e -> onSaveAs(stage));
-        Button newSampleBtn = new Button("New Sample");
-        newSampleBtn.setOnAction(e -> onNewSample(stage));
-        toolBar.getItems().addAll(new Separator(), newSampleBtn, openBtn, saveAsBtn);
+        VBox topBar = new VBox(menuBar, fileToolBar);
 
         canvas.setOnMousePressed(e -> dispatchToActiveTool(strategy -> strategy.onMousePressed(e, this)));
         canvas.setOnMouseDragged(e -> dispatchToActiveTool(strategy -> strategy.onMouseDragged(e, this)));
         canvas.setOnMouseReleased(e -> dispatchToActiveTool(strategy -> strategy.onMouseReleased(e, this)));
 
         BorderPane root = new BorderPane();
-        root.setTop(toolBar);
+        root.setTop(topBar);
+        root.setLeft(toolPalette);
         root.setCenter(splitPane);
         root.setBottom(statusLabel);
         root.getStyleClass().add("root");
 
-        Scene scene = new Scene(root, 1280, 900);
+        Scene scene = new Scene(root, 1360, 900);
         scene.getStylesheets().add(getClass().getResource("/theme/bdoc-theme.css").toExternalForm());
         stage.setTitle("BDoc Editor - Реставрация печатных изданий");
         stage.setScene(scene);
@@ -776,5 +777,116 @@ public class BdocEditorApp extends Application implements EditorContext {
 
     public static void main(String[] args) {
         launch(args);
+    }
+
+    /**
+     * Верхнее меню — стандартный набор для DTP-редактора. Undo/Redo пока
+     * заглушки (disabled): полноценная командная история появится вместе
+     * с транзакционным API (Этап 2, Пункт 9.2, runWriteAction). View-пункты
+     * управляют видимостью боковых панелей через SplitPane.setDividerPositions,
+     * а не через удаление узлов — так проще вернуть панель обратно.
+     */
+    private MenuBar buildMenuBar(Stage stage, SplitPane splitPane, TreeView<TreeNodeData> tree, BorderPane propertiesPane) {
+        Menu fileMenu = new Menu("File");
+        MenuItem newSampleItem = new MenuItem("New Sample");
+        newSampleItem.setOnAction(e -> onNewSample(stage));
+        MenuItem openItem = new MenuItem("Open...");
+        openItem.setOnAction(e -> onOpen(stage));
+        MenuItem saveAsItem = new MenuItem("Save As...");
+        saveAsItem.setOnAction(e -> onSaveAs(stage));
+        MenuItem exitItem = new MenuItem("Exit");
+        exitItem.setOnAction(e -> stage.close());
+        fileMenu.getItems().addAll(newSampleItem, openItem, saveAsItem, new SeparatorMenuItem(), exitItem);
+
+        Menu editMenu = new Menu("Edit");
+        MenuItem undoItem = new MenuItem("Undo");
+        undoItem.setDisable(true);
+        MenuItem redoItem = new MenuItem("Redo");
+        redoItem.setDisable(true);
+        editMenu.getItems().addAll(undoItem, redoItem);
+
+        Menu viewMenu = new Menu("View");
+        CheckMenuItem showTreeItem = new CheckMenuItem("Show Document Tree");
+        showTreeItem.setSelected(true);
+        showTreeItem.selectedProperty().addListener((obs, was, is) ->
+                splitPane.setDividerPositions(is ? 0.22 : 0.0, 0.76));
+        CheckMenuItem showPropsItem = new CheckMenuItem("Show Properties Panel");
+        showPropsItem.setSelected(true);
+        showPropsItem.selectedProperty().addListener((obs, was, is) ->
+                splitPane.setDividerPositions(showTreeItem.isSelected() ? 0.22 : 0.0, is ? 0.76 : 1.0));
+        viewMenu.getItems().addAll(showTreeItem, showPropsItem);
+
+        Menu helpMenu = new Menu("Help");
+        MenuItem aboutItem = new MenuItem("About BDoc Editor");
+        aboutItem.setOnAction(e -> {
+            Alert about = new Alert(Alert.AlertType.INFORMATION);
+            about.setTitle("About");
+            about.setHeaderText("BDoc Editor v0.1");
+            about.setContentText("Редактор архивных печатных изданий на JavaFX.");
+            about.showAndWait();
+        });
+        helpMenu.getItems().add(aboutItem);
+
+        return new MenuBar(fileMenu, editMenu, viewMenu, helpMenu);
+    }
+
+    private ToolBar buildFileToolBar(Stage stage) {
+        Label titleLabel = new Label("BDoc Editor v0.1");
+        Button openBtn = new Button("Open");
+        openBtn.getStyleClass().add("bdoc-toolbar-button");
+        openBtn.setOnAction(e -> onOpen(stage));
+        Button saveAsBtn = new Button("Save As");
+        saveAsBtn.getStyleClass().add("bdoc-toolbar-button");
+        saveAsBtn.setOnAction(e -> onSaveAs(stage));
+        Button newSampleBtn = new Button("New Sample");
+        newSampleBtn.getStyleClass().add("bdoc-toolbar-button");
+        newSampleBtn.setOnAction(e -> onNewSample(stage));
+
+        ToolBar toolBar = new ToolBar(titleLabel, new Separator(), newSampleBtn, openBtn, saveAsBtn);
+        toolBar.getStyleClass().add("bdoc-file-toolbar");
+        return toolBar;
+    }
+
+    /**
+     * Левая вертикальная палитра инструментов. В отличие от старого
+     * горизонтального ToolBar, каждый плагин-инструмент теперь получает
+     * квадратную кнопку 36x36 с иконкой-глифом (временно — Unicode-символ,
+     * позже заменяется на Ikonli FontIcon без изменения контракта
+     * DtpToolStrategy.getLabel()). ToggleGroup гарантирует ровно один
+     * активный инструмент, как и раньше.
+     */
+    private ToolBar buildToolPalette() {
+        ToolBar palette = new ToolBar();
+        palette.setOrientation(javafx.geometry.Orientation.VERTICAL);
+        palette.getStyleClass().add("bdoc-tool-palette");
+
+        ToggleGroup toolGroup = new ToggleGroup();
+        for (DtpToolStrategy tool : PluginContext.getInstance().getRegisteredTools().values()) {
+            ToggleButton btn = new ToggleButton(glyphFor(tool.getToolId()));
+            btn.getStyleClass().add("bdoc-tool-palette-button");
+            btn.setToggleGroup(toolGroup);
+            btn.setTooltip(new Tooltip(tool.getLabel()));
+            if (tool.getToolId().equals(currentToolId)) btn.setSelected(true);
+
+            btn.setOnAction(e -> {
+                DtpToolStrategy oldTool = PluginContext.getInstance().getTool(currentToolId);
+                if (oldTool != null) oldTool.deactivate(this);
+
+                currentToolId = tool.getToolId();
+                tool.activate(this);
+                statusLabel.setText("Active Tool: " + tool.getLabel());
+                renderCurrentPage();
+            });
+            palette.getItems().add(btn);
+        }
+        return palette;
+    }
+
+    private String glyphFor(String toolId) {
+        return switch (toolId) {
+            case "SELECTION" -> "\u2196"; // ↖ курсор выделения
+            case "TEXT" -> "T";
+            default -> "?";
+        };
     }
 }
