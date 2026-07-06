@@ -1,9 +1,11 @@
 package org.example.bdoc.ui;
 
+import atlantafx.base.theme.PrimerDark;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import javafx.application.Application;
 import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -19,6 +21,7 @@ import org.example.bdoc.io.BdocIntegrityValidator;
 import org.example.bdoc.io.BdocValidationException;
 import org.example.bdoc.io.DocumentHandle;
 import org.example.bdoc.model.*;
+import org.example.bdoc.plugin.BdocSettings;
 import org.example.bdoc.plugin.PluginContext;
 import org.example.bdoc.plugin.PluginDescriptor;
 import org.example.bdoc.render.PageRenderer;
@@ -66,6 +69,10 @@ public class BdocEditorApp extends Application implements EditorContext {
     private TaskQueue taskQueue;
     private Stage primaryStage;
 
+    // === SETTINGS PERSISTENCE: держим ссылки, чтобы прочитать значения при закрытии окна ===
+    private SplitPane rootSplitPane;
+    private Menu recentFilesMenu;
+
     /** Узел дерева: либо страница, либо слой, либо объект. */
     private enum NodeKind { DOCUMENT, PAGE, LAYER, OBJECT }
 
@@ -100,10 +107,16 @@ public class BdocEditorApp extends Application implements EditorContext {
 
     @Override
     public void start(Stage stage) {
+        // === THEME: AtlantaFX PrimerDark по умолчанию, до создания Scene ===
+        Application.setUserAgentStylesheet(new PrimerDark().getUserAgentStylesheet());
+
         this.primaryStage = stage;
         this.taskQueue = new TaskQueue(stage);
 
         registerBuiltinPlugins();
+
+        // === SETTINGS PERSISTENCE: восстанавливаем последний активный инструмент ===
+        currentToolId = BdocSettings.getInstance().loadActiveTool();
 
         documentTree = new TreeView<>();
         documentTree.setPrefWidth(260);
@@ -131,7 +144,11 @@ public class BdocEditorApp extends Application implements EditorContext {
         propertiesPane.setCenter(propertiesContainer);
 
         SplitPane splitPane = new SplitPane(documentTree, canvasPane, propertiesPane);
-        splitPane.setDividerPositions(0.22, 0.76);
+        this.rootSplitPane = splitPane;
+
+        // === SETTINGS PERSISTENCE: восстанавливаем позиции divider'ов ===
+        double[] savedDividers = BdocSettings.getInstance().loadDividerPositions(new double[]{0.22, 0.76});
+        splitPane.setDividerPositions(savedDividers[0], savedDividers[1]);
 
         statusLabel = new Label("No document loaded");
         statusLabel.getStyleClass().add("bdoc-status-bar");
@@ -158,6 +175,25 @@ public class BdocEditorApp extends Application implements EditorContext {
         scene.getStylesheets().add(getClass().getResource("/theme/bdoc-theme.css").toExternalForm());
         stage.setTitle("BDoc Editor - Реставрация печатных изданий");
         stage.setScene(scene);
+
+        // === SETTINGS PERSISTENCE: восстанавливаем размер/позицию/maximized окна ===
+        double[] bounds = BdocSettings.getInstance().loadWindowBounds();
+        stage.setX(bounds[0]);
+        stage.setY(bounds[1]);
+        stage.setWidth(bounds[2]);
+        stage.setHeight(bounds[3]);
+        if (BdocSettings.getInstance().isWindowMaximized()) {
+            stage.setMaximized(true);
+        }
+
+        // === SETTINGS PERSISTENCE: сохраняем всё при закрытии окна ===
+        stage.setOnCloseRequest(e -> {
+            BdocSettings.getInstance().saveWindowBounds(
+                    stage.getX(), stage.getY(), stage.getWidth(), stage.getHeight(), stage.isMaximized());
+            BdocSettings.getInstance().saveDividerPositions(splitPane.getDividerPositions());
+            BdocSettings.getInstance().saveActiveTool(currentToolId);
+        });
+
         stage.show();
         loadInitialSample(stage);
     }
@@ -577,6 +613,11 @@ public class BdocEditorApp extends Application implements EditorContext {
             statusLabel.setText("Re-packing BDoc archive with new layout and text...");
             saveDocument(document, target);
             statusLabel.setText("Saved to " + target.getAbsolutePath() + " [Pack OK]");
+
+            // === SETTINGS PERSISTENCE: обновляем Recent Files после успешного сохранения ===
+            currentFile = target;
+            BdocSettings.getInstance().pushRecentFile(target.getAbsolutePath());
+            rebuildRecentFilesMenu();
         } catch (IOException ex) {
             showError("Save error", "Failed to compile document package: " + ex.getMessage());
             ex.printStackTrace();
@@ -611,6 +652,10 @@ public class BdocEditorApp extends Application implements EditorContext {
 
             statusLabel.setText("Opened: " + file.getName()
                     + " (" + document.getPageCount() + " pages)");
+
+            // === SETTINGS PERSISTENCE: обновляем Recent Files после успешного открытия ===
+            BdocSettings.getInstance().pushRecentFile(file.getAbsolutePath());
+            rebuildRecentFilesMenu();
         } catch (Exception ex) {
             showError("Open error", ex.getMessage());
         }
@@ -753,11 +798,6 @@ public class BdocEditorApp extends Application implements EditorContext {
         return restoreToMaster(getCurrentPage(), getCurrentMasterPage(), overrideObject);
     }
 
-    // getter используется TextEditorPropertiesPanelFactory/DefaultGeometryPropertiesPanelFactory
-    // через EditorContext — restoreToMaster остаётся приватным вызовом, экспонируемым
-    // отдельной кнопкой прямо в DefaultGeometryPropertiesPanelFactory через runWriteAction.
-    // Для этого нужен метод в EditorContext — см. примечание ниже.
-
     private void showValidationErrors(String title, BdocValidationException validationEx) {
         StringBuilder sb = new StringBuilder();
         for (String error : validationEx.getErrors()) {
@@ -779,24 +819,23 @@ public class BdocEditorApp extends Application implements EditorContext {
         launch(args);
     }
 
-    /**
-     * Верхнее меню — стандартный набор для DTP-редактора. Undo/Redo пока
-     * заглушки (disabled): полноценная командная история появится вместе
-     * с транзакционным API (Этап 2, Пункт 9.2, runWriteAction). View-пункты
-     * управляют видимостью боковых панелей через SplitPane.setDividerPositions,
-     * а не через удаление узлов — так проще вернуть панель обратно.
-     */
+    // === MENU BAR: File/Edit/View/Help + подменю Recent Files ===
     private MenuBar buildMenuBar(Stage stage, SplitPane splitPane, TreeView<TreeNodeData> tree, BorderPane propertiesPane) {
         Menu fileMenu = new Menu("File");
         MenuItem newSampleItem = new MenuItem("New Sample");
         newSampleItem.setOnAction(e -> onNewSample(stage));
         MenuItem openItem = new MenuItem("Open...");
         openItem.setOnAction(e -> onOpen(stage));
+
+        // === MENU BAR: Recent Files — динамический подменю, пересобирается при показе ===
+        recentFilesMenu = new Menu("Recent Files");
+        rebuildRecentFilesMenu();
+
         MenuItem saveAsItem = new MenuItem("Save As...");
         saveAsItem.setOnAction(e -> onSaveAs(stage));
         MenuItem exitItem = new MenuItem("Exit");
         exitItem.setOnAction(e -> stage.close());
-        fileMenu.getItems().addAll(newSampleItem, openItem, saveAsItem, new SeparatorMenuItem(), exitItem);
+        fileMenu.getItems().addAll(newSampleItem, openItem, recentFilesMenu, saveAsItem, new SeparatorMenuItem(), exitItem);
 
         Menu editMenu = new Menu("Edit");
         MenuItem undoItem = new MenuItem("Undo");
@@ -830,6 +869,34 @@ public class BdocEditorApp extends Application implements EditorContext {
         return new MenuBar(fileMenu, editMenu, viewMenu, helpMenu);
     }
 
+    // === MENU BAR: пересборка списка последних 5 файлов из BdocSettings ===
+    private void rebuildRecentFilesMenu() {
+        if (recentFilesMenu == null) return;
+        recentFilesMenu.getItems().clear();
+
+        List<String> recent = BdocSettings.getInstance().loadRecentFiles();
+        if (recent.isEmpty()) {
+            MenuItem empty = new MenuItem("(empty)");
+            empty.setDisable(true);
+            recentFilesMenu.getItems().add(empty);
+            return;
+        }
+
+        for (String path : recent) {
+            MenuItem item = new MenuItem(path);
+            item.setOnAction(e -> openDocument(new File(path)));
+            recentFilesMenu.getItems().add(item);
+        }
+
+        recentFilesMenu.getItems().add(new SeparatorMenuItem());
+        MenuItem clearItem = new MenuItem("Clear Recent Files");
+        clearItem.setOnAction(e -> {
+            BdocSettings.getInstance().clearRecentFiles();
+            rebuildRecentFilesMenu();
+        });
+        recentFilesMenu.getItems().add(clearItem);
+    }
+
     private ToolBar buildFileToolBar(Stage stage) {
         Label titleLabel = new Label("BDoc Editor v0.1");
         Button openBtn = new Button("Open");
@@ -847,17 +914,10 @@ public class BdocEditorApp extends Application implements EditorContext {
         return toolBar;
     }
 
-    /**
-     * Левая вертикальная палитра инструментов. В отличие от старого
-     * горизонтального ToolBar, каждый плагин-инструмент теперь получает
-     * квадратную кнопку 36x36 с иконкой-глифом (временно — Unicode-символ,
-     * позже заменяется на Ikonli FontIcon без изменения контракта
-     * DtpToolStrategy.getLabel()). ToggleGroup гарантирует ровно один
-     * активный инструмент, как и раньше.
-     */
+    // === TOOL PALETTE: вертикальная палитра инструментов слева ===
     private ToolBar buildToolPalette() {
         ToolBar palette = new ToolBar();
-        palette.setOrientation(javafx.geometry.Orientation.VERTICAL);
+        palette.setOrientation(Orientation.VERTICAL);
         palette.getStyleClass().add("bdoc-tool-palette");
 
         ToggleGroup toolGroup = new ToggleGroup();

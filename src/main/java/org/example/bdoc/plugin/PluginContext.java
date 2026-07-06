@@ -82,4 +82,14 @@ public final class PluginContext {
     }
 
     public List<DocumentLifecycleListener> getLifecycleListeners() { return lifecycleListeners; }
+
+    private final List<MenuActionExtension> menuExtensions = new ArrayList<>();
+
+    public void registerMenuExtension(MenuActionExtension ext) {
+        menuExtensions.add(ext);
+    }
+
+    public List<MenuActionExtension> getMenuExtensions() {
+        return Collections.unmodifiableList(menuExtensions);
+    }
 }
