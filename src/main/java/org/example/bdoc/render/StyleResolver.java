@@ -9,7 +9,8 @@ import java.util.Set;
 /**
  * Разрешает цепочку наследования basedOn для ParagraphStyle
  * и сводит её в EffectiveParagraphStyle, где все поля гарантированно
- * заполнены (либо значением стиля, либо значением по умолчанию).
+ * заполнены. Цвет разрешается по модели Smart Fallback (Вопросы 4, 7):
+ * colorSwatchRef -> ColorResolver -> rawColor -> системный дефолт.
  */
 public final class StyleResolver {
 
@@ -35,6 +36,7 @@ public final class StyleResolver {
         Double lineHeight = null;
         String alignment = null;
         String color = null;
+        String colorSwatchRef = null;
 
         Set<String> visited = new HashSet<>();
         String currentId = styleRef;
@@ -55,16 +57,19 @@ public final class StyleResolver {
             if (lineHeight == null) lineHeight = style.getLineHeight();
             if (alignment == null) alignment = style.getAlignment();
             if (color == null) color = style.getColor();
+            if (colorSwatchRef == null) colorSwatchRef = style.getColorSwatchRef();
 
             currentId = style.getBasedOn();
         }
+
+        String resolvedColor = ColorResolver.resolve(color, colorSwatchRef, styles);
 
         return new EffectiveParagraphStyle(
                 fontFamily != null ? fontFamily : DEFAULT_FONT_FAMILY,
                 fontSize != null ? fontSize : DEFAULT_FONT_SIZE,
                 lineHeight != null ? lineHeight : DEFAULT_LINE_HEIGHT,
                 alignment != null ? alignment : DEFAULT_ALIGNMENT,
-                color != null ? color : DEFAULT_COLOR
+                resolvedColor != null ? resolvedColor : DEFAULT_COLOR
         );
     }
 

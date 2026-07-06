@@ -107,11 +107,18 @@ public final class BdocContainerSerializer {
 
         public void finish(String id, String title, String documentType,
                            String version, String language, StylesCatalog styles) throws IOException {
+            finish(id, title, documentType, version, language, styles, null, null);
+        }
+
+        public void finish(String id, String title, String documentType,
+                           String version, String language, StylesCatalog styles,
+                           List<ColorProfile> colorProfiles, String outputIntentProfileRef) throws IOException {
             if (finished) {
                 throw new IllegalStateException("Writer already finished");
             }
             Manifest manifest = new Manifest(
-                    id, title, documentType, version, language, pageEntries, storyEntries, templateEntries);
+                    id, title, documentType, version, language, pageEntries, storyEntries, templateEntries,
+                    colorProfiles, outputIntentProfileRef);
             container.writeBytes("manifest.json", jsonMapper.writeValueAsBytes(manifest));
             container.writeBytes("styles.json",
                     jsonMapper.writeValueAsBytes(styles != null ? styles : StylesCatalog.empty()));

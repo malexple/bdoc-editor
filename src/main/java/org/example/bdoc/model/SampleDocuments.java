@@ -38,10 +38,12 @@ public final class SampleDocuments {
             writePage4(writer);
             writePage5(writer);
             writePage6(writer);
+            writePage7(writer);
 
             writer.finish(
                     "doc-1", "BDoc Demo", "book",
-                    "0.1-composite", "ru-RU", buildStylesCatalog()
+                    "0.1-composite", "ru-RU", buildStylesCatalog(),
+                    buildColorProfiles(), "icc-fogra39"
             );
         }
     }
@@ -549,7 +551,8 @@ public final class SampleDocuments {
         return new StylesCatalog(
                 List.of(bodyStyle, headingStyle, footerStyle, quoteStyle),
                 List.of(boldEmphasis, footnoteMarker, referenceLink),
-                buildObjectStyles()
+                buildObjectStyles(),
+                buildSwatches()
         );
     }
 
@@ -684,5 +687,203 @@ public final class SampleDocuments {
                 readingOrder6
         );
         writer.writePage(page6);
+    }
+
+
+
+    /**
+     * Каталог образцов для демонстрации ColorResolver (Вопросы 1, 2, 4, 7):
+     *  - swatch-blue-tint: чистый RGB, без каскада CMYK.
+     *  - swatch-brand-navy: CMYK С заданным fallbackRgb — резолвится мгновенно,
+     *    формула не считается (fallbackRgb имеет наивысший приоритет).
+     *  - swatch-brand-red-approx: CMYK БЕЗ fallbackRgb — резолвится черновой
+     *    формулой R=255*(1-c)*(1-k) на лету.
+     *  - swatch-pantone-gold-nofallback: Spot без fallbackRgb — сигнализирует
+     *    едкой MAGENTA, что плашечный цвет требует калибровки превью.
+     *  - swatch-pantone-red-calibrated: Spot С fallbackRgb — калиброванный превью.
+     *  - swatch-archive-lab: Lab — не поддерживается на лету, дефолтный чёрный.
+     */
+    private static List<Swatch> buildSwatches() {
+        return List.of(
+                Swatch.rgb("swatch-blue-tint", "Синий акцент (RGB)", "#3B82F6"),
+                Swatch.cmyk("swatch-brand-navy", "Тёмно-синий (CMYK, с фолбеком)",
+                        85.0, 60.0, 0.0, 40.0, "#1E3A5F"),
+                Swatch.cmyk("swatch-brand-red-approx", "Бренд-красный (расчётный CMYK)",
+                        10.0, 90.0, 80.0, 5.0, null),
+                Swatch.spot("swatch-pantone-gold-nofallback", "Pantone 872 C (без фолбека)", null),
+                Swatch.spot("swatch-pantone-red-calibrated", "Pantone 186 C (калиброван)", "#C8102E"),
+                new Swatch("swatch-archive-lab", "Архивный Lab-образец", "Lab", null, null, null, null, null)
+        );
+    }
+
+    /**
+     * Каталог ICC-профилей документа (Вопросы 3, 6). icc-fogra39 назначен
+     * глобальным outputIntentProfileRef всей книги, icc-scanner-old привязан
+     * индивидуально к одному ImageFrame на page7 (архивный скан).
+     */
+    private static List<ColorProfile> buildColorProfiles() {
+        return List.of(
+                new ColorProfile("icc-fogra39", "Coated FOGRA39",
+                        "CMYK", "Европейский стандарт офсетной печати (Output Intent книги)"),
+                new ColorProfile("icc-scanner-old", "Legacy Scanner RGB",
+                        "RGB", "Специфическое цветовое пространство старого сканера архива")
+        );
+    }
+    // ==================== Страница 7: Swatches, ColorProfile, ColorResolver (Этап 1.7) ====================
+
+    /**
+     * Демонстрирует все аспекты Этапа 1.7:
+     *  1. Пять цветных карточек VectorShape, каждая раскрашена через отдельный
+     *     Swatch — визуально видно разницу между RGB, CMYK с фолбеком, CMYK без
+     *     фолбека (расчёт формулой), Spot без фолбека (едкая магента) и Lab (чёрный).
+     *  2. Шестая карточка raw HEX без swatchRef — подтверждает обратную
+     *     совместимость Smart Fallback (Вопрос 4).
+     *  3. Составная буква «О» с fillRule=even-odd теперь получает реальную
+     *     заливку через fillColorSwatchRef (было невозможно до Вопроса 5).
+     *  4. LineObject окрашен через strokeColorSwatchRef на калиброванный Pantone.
+     *  5. ImageFrame ссылается на индивидуальный profileRef (icc-scanner-old),
+     *     отдельный от глобального outputIntentProfileRef книги (icc-fogra39).
+     */
+    private static void writePage7(Writer writer) throws IOException {
+        writer.writeResource("resources/scans/archive-page-scan.png", generateDropCapIcon());
+
+        StoryModel story7 = new StoryModel("story-7", List.of(
+                new Paragraph("heading", "heading-1", "Палитра образцов (Этап 1.7)"),
+                new Paragraph("body", "body-text",
+                        "Шесть карточек сверху показывают разные пути ColorResolver: RGB, CMYK с фолбеком, "
+                                + "CMYK без фолбека (формула на лету), Spot без калибровки (магента-предупреждение), "
+                                + "Lab (дефолтный чёрный) и обычный HEX без ссылки на образец. Буква «О» ниже залита "
+                                + "через swatchRef с учётом fillRule=even-odd.")
+        ));
+        writer.writeStory(story7);
+
+        LayerModel decorLayer7 = new LayerModel("layer-decor", "Decoration", "decoration", true, 1.0);
+        LayerModel textLayer7 = new LayerModel("layer-text", "Text", "text", true, 1.0);
+        LayerModel footerLayer7 = new LayerModel("layer-footer", "Footer", "header-footer", true, 1.0);
+
+        TextFrame headingFrame7 = new TextFrame(
+                "text-7-heading", "layer-text",
+                new Geometry(70.0, 120.0, 455.0, 50.0),
+                "story-7"
+        );
+
+        double cardY = 190.0;
+        double cardW = 70.0;
+        double cardH = 70.0;
+        double gap = 15.0;
+
+        VectorShape cardRgb = new VectorShape(
+                "shape-card-rgb", "layer-decor",
+                new Geometry(70.0, cardY, cardW, cardH, 8.0, 8.0),
+                "rounded-rectangle",
+                null, "#0F172A", "swatch-blue-tint", null
+        );
+
+        VectorShape cardCmykFallback = new VectorShape(
+                "shape-card-cmyk-fallback", "layer-decor",
+                new Geometry(70.0 + (cardW + gap), cardY, cardW, cardH, 8.0, 8.0),
+                "rounded-rectangle",
+                null, "#0F172A", "swatch-brand-navy", null
+        );
+
+        VectorShape cardCmykFormula = new VectorShape(
+                "shape-card-cmyk-formula", "layer-decor",
+                new Geometry(70.0 + (cardW + gap) * 2, cardY, cardW, cardH, 8.0, 8.0),
+                "rounded-rectangle",
+                null, "#0F172A", "swatch-brand-red-approx", null
+        );
+
+        VectorShape cardSpotNoFallback = new VectorShape(
+                "shape-card-spot-nofallback", "layer-decor",
+                new Geometry(70.0 + (cardW + gap) * 3, cardY, cardW, cardH, 8.0, 8.0),
+                "rounded-rectangle",
+                null, "#0F172A", "swatch-pantone-gold-nofallback", null
+        );
+
+        VectorShape cardLab = new VectorShape(
+                "shape-card-lab", "layer-decor",
+                new Geometry(70.0 + (cardW + gap) * 4, cardY, cardW, cardH, 8.0, 8.0),
+                "rounded-rectangle",
+                null, "#0F172A", "swatch-archive-lab", null
+        );
+
+        // Обратная совместимость (Вопрос 4): чистый HEX без swatchRef продолжает работать.
+        VectorShape cardRawHex = new VectorShape(
+                "shape-card-raw-hex", "layer-decor",
+                new Geometry(70.0 + (cardW + gap) * 5, cardY, cardW, cardH, 8.0, 8.0),
+                "rounded-rectangle",
+                "#F97316", "#0F172A", null, null
+        );
+
+        // Составная буква «О» (fillRule=even-odd) — теперь с реальной заливкой
+        // через fillColorSwatchRef, чего не хватало до Вопроса 5.
+        VectorShape letterOFilled = new VectorShape(
+                "shape-letter-o-filled", "layer-decor",
+                new Geometry(220.0, 300.0, 100.0, 100.0),
+                "polygon",
+                null, null, true,
+                null, null, false, false, null, null,
+                new PathModel("compound", List.of(
+                        PathPoint.moveTo(270.0, 300.0),
+                        PathPoint.lineTo(305.4, 314.6),
+                        PathPoint.lineTo(320.0, 350.0),
+                        PathPoint.lineTo(305.4, 385.4),
+                        PathPoint.lineTo(270.0, 400.0),
+                        PathPoint.lineTo(234.6, 385.4),
+                        PathPoint.lineTo(220.0, 350.0),
+                        PathPoint.lineTo(234.6, 314.6),
+                        PathPoint.moveTo(270.0, 325.0),
+                        PathPoint.lineTo(287.7, 332.3),
+                        PathPoint.lineTo(295.0, 350.0),
+                        PathPoint.lineTo(287.7, 367.7),
+                        PathPoint.lineTo(270.0, 375.0),
+                        PathPoint.lineTo(252.3, 367.7),
+                        PathPoint.lineTo(245.0, 350.0),
+                        PathPoint.lineTo(252.3, 332.3)
+                ), "even-odd"),
+                null,
+                null, "#0F172A", "swatch-brand-navy", null
+        );
+
+        // LineObject окрашен через strokeColorSwatchRef на калиброванный Pantone.
+        LineObject dividerCalibrated = new LineObject(
+                "line-divider-7", "layer-decor",
+                70.0, 430.0, 525.0, 430.0,
+                2.0, "#000000", "solid",
+                "none", "none",
+                null, null, null,
+                "swatch-pantone-red-calibrated"
+        );
+
+        // ImageFrame с индивидуальным profileRef, отдельным от outputIntentProfileRef книги.
+        ImageFrame archiveScan = new ImageFrame(
+                "image-7-archive-scan", "layer-decor",
+                new Geometry(70.0, 460.0, 100.0, 100.0),
+                "resources/scans/archive-page-scan.png",
+                null, null, true,
+                null, null, false, false, null, null, null, null,
+                "icc-scanner-old"
+        );
+
+        TextFrame captionFrame7 = new TextFrame(
+                "text-7-caption", "layer-text",
+                new Geometry(190.0, 460.0, 335.0, 100.0),
+                "story-7"
+        );
+
+        List<ReadingSegment> readingOrder7 = List.of(
+                new ReadingSegment(1, "text-7-heading", "heading"),
+                new ReadingSegment(2, "text-7-caption", "body")
+        );
+
+        PageModel page7 = new PageModel(
+                "page-7", 7, 595.0, 842.0, "pt", "master-A",
+                List.of(decorLayer7, textLayer7, footerLayer7),
+                List.of(headingFrame7,
+                        cardRgb, cardCmykFallback, cardCmykFormula, cardSpotNoFallback, cardLab, cardRawHex,
+                        letterOFilled, dividerCalibrated, archiveScan, captionFrame7),
+                readingOrder7
+        );
+        writer.writePage(page7);
     }
 }

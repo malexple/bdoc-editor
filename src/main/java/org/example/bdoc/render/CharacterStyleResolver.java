@@ -16,7 +16,8 @@ public final class CharacterStyleResolver {
 
     /**
      * Разрешает CharacterStyle span'а, используя эффективный стиль параграфа
-     * как базу для незаданных полей (наследование "снизу вверх": span -> ... -> paragraph style).
+     * как базу для незаданных полей. Цвет разрешается по модели Smart Fallback:
+     * colorSwatchRef -> ColorResolver -> rawColor -> цвет параграфа (уже резолвлен).
      */
     public EffectiveCharacterStyle resolve(String characterStyleRef, EffectiveParagraphStyle paragraphFallback) {
         String fontFamily = null;
@@ -24,6 +25,7 @@ public final class CharacterStyleResolver {
         Boolean bold = null;
         Boolean italic = null;
         String color = null;
+        String colorSwatchRef = null;
 
         Set<String> visited = new HashSet<>();
         String currentId = characterStyleRef;
@@ -44,16 +46,19 @@ public final class CharacterStyleResolver {
             if (bold == null && style.isBold()) bold = true;
             if (italic == null && style.isItalic()) italic = true;
             if (color == null) color = style.getColor();
+            if (colorSwatchRef == null) colorSwatchRef = style.getColorSwatchRef();
 
             currentId = style.getBasedOn();
         }
+
+        String resolvedColor = ColorResolver.resolve(color, colorSwatchRef, styles);
 
         return new EffectiveCharacterStyle(
                 fontFamily != null ? fontFamily : paragraphFallback.getFontFamily(),
                 fontSize != null ? fontSize : paragraphFallback.getFontSize(),
                 bold != null && bold,
                 italic != null && italic,
-                color != null ? color : paragraphFallback.getColor()
+                resolvedColor != null ? resolvedColor : paragraphFallback.getColor()
         );
     }
 }

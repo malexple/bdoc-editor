@@ -14,6 +14,8 @@ public final class Manifest {
     private final List<ManifestPageEntry> pages;
     private final List<ManifestStoryEntry> stories;
     private final List<ManifestTemplateEntry> templates;
+    private final List<ColorProfile> colorProfiles;
+    private final String outputIntentProfileRef;
 
     @JsonCreator
     public Manifest(
@@ -24,7 +26,9 @@ public final class Manifest {
             @JsonProperty("language") String language,
             @JsonProperty("pages") List<ManifestPageEntry> pages,
             @JsonProperty("stories") List<ManifestStoryEntry> stories,
-            @JsonProperty("templates") List<ManifestTemplateEntry> templates) {
+            @JsonProperty("templates") List<ManifestTemplateEntry> templates,
+            @JsonProperty("colorProfiles") List<ColorProfile> colorProfiles,
+            @JsonProperty("outputIntentProfileRef") String outputIntentProfileRef) {
         this.id = id;
         this.title = title;
         this.documentType = documentType;
@@ -33,6 +37,15 @@ public final class Manifest {
         this.pages = pages != null ? pages : List.of();
         this.stories = stories != null ? stories : List.of();
         this.templates = templates != null ? templates : List.of();
+        this.colorProfiles = colorProfiles != null ? colorProfiles : List.of();
+        this.outputIntentProfileRef = outputIntentProfileRef;
+    }
+
+    // Совместимость со старым вызовом в BdocContainerSerializer.Writer.finish(...)
+    public Manifest(
+            String id, String title, String documentType, String version, String language,
+            List<ManifestPageEntry> pages, List<ManifestStoryEntry> stories, List<ManifestTemplateEntry> templates) {
+        this(id, title, documentType, version, language, pages, stories, templates, null, null);
     }
 
     public String getId() { return id; }
@@ -43,4 +56,11 @@ public final class Manifest {
     public List<ManifestPageEntry> getPages() { return pages; }
     public List<ManifestStoryEntry> getStories() { return stories; }
     public List<ManifestTemplateEntry> getTemplates() { return templates; }
+    public List<ColorProfile> getColorProfiles() { return colorProfiles; }
+    public String getOutputIntentProfileRef() { return outputIntentProfileRef; }
+
+    public ColorProfile findColorProfile(String id) {
+        if (id == null) return null;
+        return colorProfiles.stream().filter(p -> p.getId().equals(id)).findFirst().orElse(null);
+    }
 }

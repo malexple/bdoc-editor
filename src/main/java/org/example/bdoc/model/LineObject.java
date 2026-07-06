@@ -15,6 +15,7 @@ public final class LineObject extends BdocObject {
     private final String strokePattern;
     private final String startCap;
     private final String endCap;
+    private final String strokeColorSwatchRef;
 
     public LineObject(String id, String layerRef, double x1, double y1, double x2, double y2,
                       double strokeWidth, String strokeColor, String strokePattern,
@@ -26,6 +27,7 @@ public final class LineObject extends BdocObject {
         this.strokePattern = strokePattern != null ? strokePattern : "solid";
         this.startCap = startCap != null ? startCap : "none";
         this.endCap = endCap != null ? endCap : "none";
+        this.strokeColorSwatchRef = null;
     }
 
     @JsonCreator
@@ -43,15 +45,21 @@ public final class LineObject extends BdocObject {
             @JsonProperty("endCap") String endCap,
             @JsonProperty("visible") Boolean visible,
             @JsonProperty("pathData") PathModel pathData,
-            @JsonProperty("transform") TransformModel transform) {
-        this(id, layerRef, x1, y1, x2, y2, strokeWidth, strokeColor, strokePattern, startCap, endCap);
+            @JsonProperty("transform") TransformModel transform,
+            @JsonProperty("strokeColorSwatchRef") String strokeColorSwatchRef) {
+        super(id, layerRef, boundingBoxOf(x1, y1, x2, y2));
+        this.x1 = x1; this.y1 = y1; this.x2 = x2; this.y2 = y2;
+        this.strokeWidth = strokeWidth;
+        this.strokeColor = strokeColor;
+        this.strokePattern = strokePattern != null ? strokePattern : "solid";
+        this.startCap = startCap != null ? startCap : "none";
+        this.endCap = endCap != null ? endCap : "none";
+        this.strokeColorSwatchRef = strokeColorSwatchRef;
         if (visible != null) {
             this.visible = visible;
         }
         // pathData у LineObject не используется на Этапе 1 (принимается,
-        // но игнорируется) — линия описывается через x1/y1/x2/y2, а не
-        // через произвольный контур. Параметр оставлен только ради
-        // единообразия JSON-схемы всех наследников BdocObject.
+        // но игнорируется) — линия описывается через x1/y1/x2/y2.
     }
 
     private static Geometry boundingBoxOf(double x1, double y1, double x2, double y2) {
@@ -75,9 +83,8 @@ public final class LineObject extends BdocObject {
     public String getStrokePattern() { return strokePattern; }
     public String getStartCap() { return startCap; }
     public String getEndCap() { return endCap; }
+    public String getStrokeColorSwatchRef() { return strokeColorSwatchRef; }
 
     @Override
     public String getType() { return "LineObject"; }
-
-
 }

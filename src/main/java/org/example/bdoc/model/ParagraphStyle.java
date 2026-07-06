@@ -11,6 +11,7 @@ public final class ParagraphStyle {
     private final Double lineHeight;
     private final String alignment;
     private final String color;
+    private final String colorSwatchRef;
 
     @JsonCreator
     public ParagraphStyle(
@@ -20,7 +21,8 @@ public final class ParagraphStyle {
             @JsonProperty("fontSize") Double fontSize,
             @JsonProperty("lineHeight") Double lineHeight,
             @JsonProperty("alignment") String alignment,
-            @JsonProperty("color") String color) {
+            @JsonProperty("color") String color,
+            @JsonProperty("colorSwatchRef") String colorSwatchRef) {
         this.id = id;
         this.basedOn = basedOn;
         this.fontFamily = fontFamily;
@@ -28,6 +30,13 @@ public final class ParagraphStyle {
         this.lineHeight = lineHeight;
         this.alignment = alignment;
         this.color = color;
+        this.colorSwatchRef = colorSwatchRef;
+    }
+
+    // Совместимость со старыми вызовами в SampleDocuments (7 параметров)
+    public ParagraphStyle(String id, String basedOn, String fontFamily, Double fontSize,
+                          Double lineHeight, String alignment, String color) {
+        this(id, basedOn, fontFamily, fontSize, lineHeight, alignment, color, null);
     }
 
     public String getId() { return id; }
@@ -37,4 +46,5 @@ public final class ParagraphStyle {
     public Double getLineHeight() { return lineHeight; }
     public String getAlignment() { return alignment; }
     public String getColor() { return color; }
+    public String getColorSwatchRef() { return colorSwatchRef; }
 }

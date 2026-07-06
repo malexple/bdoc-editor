@@ -22,24 +22,70 @@ public final class BdocIntegrityValidator {
         return ids;
     }
 
+    private Set<String> collectSwatchIds(StylesCatalog styles) {
+        Set<String> ids = new HashSet<>();
+        for (Swatch swatch : styles.getSwatches()) {
+            ids.add(swatch.getId());
+        }
+        return ids;
+    }
+
+    private Set<String> collectColorProfileIds(Manifest manifest) {
+        Set<String> ids = new HashSet<>();
+        for (ColorProfile profile : manifest.getColorProfiles()) {
+            ids.add(profile.getId());
+        }
+        return ids;
+    }
+
     public void validate(DocumentHandle document) {
         List<String> errors = new ArrayList<>();
 
         Set<String> storyIds = document.getStoryIds();
         Set<String> knownParagraphStyleIds = collectParagraphStyleIds(document.getStyles());
+        Set<String> knownSwatchIds = collectSwatchIds(document.getStyles());
+        Set<String> knownColorProfileIds = collectColorProfileIds(document.getManifest());
 
         List<PageModel> allPages = loadAllPages(document, errors);
         Set<String> allObjectIds = collectAllObjectIds(allPages, document);
         Set<String> allPageIds = allPages.stream().map(PageModel::getId).collect(Collectors.toSet());
         Map<String, TextFrame> allTextFramesById = collectAllTextFrames(allPages);
 
+        validateManifestColorReferences(document, knownColorProfileIds, errors);
+        validateStyleSwatchReferences(document.getStyles(), knownSwatchIds, errors);
         validateStories(document, storyIds, knownParagraphStyleIds, allObjectIds, allPageIds, errors);
-        validatePages(document, storyIds, allPages, errors);
+        validatePages(document, storyIds, allPages, knownSwatchIds, knownColorProfileIds, errors);
         validateTextThreading(allTextFramesById, errors);
 
         if (!errors.isEmpty()) {
             throw new BdocValidationException(
                     "BDoc document failed integrity validation", errors);
+        }
+    }
+
+    /** Вопрос 8: outputIntentProfileRef манифеста должен указывать на существующий ColorProfile. */
+    private void validateManifestColorReferences(DocumentHandle document, Set<String> knownColorProfileIds,
+                                                 List<String> errors) {
+        String outputIntentRef = document.getManifest().getOutputIntentProfileRef();
+        if (outputIntentRef != null && !knownColorProfileIds.contains(outputIntentRef)) {
+            errors.add("Manifest outputIntentProfileRef '" + outputIntentRef
+                    + "' does not match any ColorProfile in manifest.json");
+        }
+    }
+
+    /** Вопрос 8: colorSwatchRef у ParagraphStyle/CharacterStyle должен указывать на существующий Swatch. */
+    private void validateStyleSwatchReferences(StylesCatalog styles, Set<String> knownSwatchIds, List<String> errors) {
+        for (ParagraphStyle ps : styles.getParagraphStyles()) {
+            if (ps.getColorSwatchRef() != null && !knownSwatchIds.contains(ps.getColorSwatchRef())) {
+                errors.add("ParagraphStyle '" + ps.getId() + "' has colorSwatchRef '"
+                        + ps.getColorSwatchRef() + "' which does not match any Swatch in styles.json");
+            }
+        }
+        for (CharacterStyle cs : styles.getCharacterStyles()) {
+            if (cs.getColorSwatchRef() != null && !knownSwatchIds.contains(cs.getColorSwatchRef())) {
+                errors.add("CharacterStyle '" + cs.getId() + "' has colorSwatchRef '"
+                        + cs.getColorSwatchRef() + "' which does not match any Swatch in styles.json");
+            }
         }
     }
 
@@ -55,12 +101,6 @@ public final class BdocIntegrityValidator {
         return pages;
     }
 
-    /**
-     * Глобальный индекс всех object id по документу — используется для
-     * проверки Reference(targetType="object"), которая может ссылаться
-     * на объект на ЛЮБОЙ странице (например, "см. рис. 3" на другой странице).
-     * Также подмешивает объекты MasterPage для каждого встретившегося templateRef.
-     */
     private Set<String> collectAllObjectIds(List<PageModel> pages, DocumentHandle document) {
         Set<String> ids = new HashSet<>();
         Set<String> processedTemplates = new HashSet<>();
@@ -135,12 +175,6 @@ public final class BdocIntegrityValidator {
         }
     }
 
-    /**
-     * На Этапе 1.5 нумерация сносок хранится явно (String number), поэтому
-     * проверяется только заполненность поля. Уникальность номера в рамках
-     * Story — намеренно НЕ жёсткая ошибка: в оригиналах книг сноски могут
-     * повторно использовать звёздочки/литеры на разных страницах.
-     */
     private void validateFootnote(FootnoteModel footnote, String spanLabel, List<String> errors) {
         if (footnote == null) return;
         if (footnote.getNumber() == null || footnote.getNumber().isBlank()) {
@@ -181,12 +215,6 @@ public final class BdocIntegrityValidator {
         }
     }
 
-    /**
-     * Проверяет ссылочную целостность цепочек перетекания текста:
-     * nextFrameRef/previousFrameRef должны указывать на существующие
-     * TextFrame, цепочка должна быть симметричной (A.next == B => B.prev == A),
-     * и оба фрейма цепочки должны ссылаться на одну и ту же Story.
-     */
     private void validateTextThreading(Map<String, TextFrame> textFramesById, List<String> errors) {
         for (TextFrame frame : textFramesById.values()) {
             if (frame.getNextFrameRef() != null) {
@@ -213,7 +241,8 @@ public final class BdocIntegrityValidator {
         }
     }
 
-    private void validatePages(DocumentHandle document, Set<String> storyIds, List<PageModel> allPages, List<String> errors) {
+    private void validatePages(DocumentHandle document, Set<String> storyIds, List<PageModel> allPages,
+                               Set<String> knownSwatchIds, Set<String> knownColorProfileIds, List<String> errors) {
         Set<Integer> pageIndices = document.getPageIndices();
         if (pageIndices.isEmpty()) {
             errors.add("Document has no pages: a document must contain at least one page");
@@ -232,7 +261,7 @@ public final class BdocIntegrityValidator {
                         + " which does not match any MasterPage in templates.json");
             }
 
-            validateSinglePage(page, storyIds, document, errors);
+            validateSinglePage(page, storyIds, document, knownSwatchIds, knownColorProfileIds, errors);
         }
     }
 
@@ -246,7 +275,8 @@ public final class BdocIntegrityValidator {
         }
     }
 
-    private void validateSinglePage(PageModel page, Set<String> storyIds, DocumentHandle document, List<String> errors) {
+    private void validateSinglePage(PageModel page, Set<String> storyIds, DocumentHandle document,
+                                    Set<String> knownSwatchIds, Set<String> knownColorProfileIds, List<String> errors) {
         String pageLabel = "Page " + page.getId() + " (index " + page.getIndex() + ")";
         if (page.getLayers().isEmpty()) {
             errors.add(pageLabel + " has no layers: a page must contain at least one layer");
@@ -285,7 +315,7 @@ public final class BdocIntegrityValidator {
                 }
             }
 
-            validateObjectSpecifics(object, pageLabel, storyIds, document, errors);
+            validateObjectSpecifics(object, pageLabel, storyIds, document, knownSwatchIds, knownColorProfileIds, errors);
             validateObjectStyleRef(object, document.getStyles(), pageLabel, errors);
             validateAnchoredSettings(object, storyIds, document, pageLabel, errors);
         }
@@ -299,7 +329,8 @@ public final class BdocIntegrityValidator {
     }
 
     private void validateObjectSpecifics(BdocObject object, String pageLabel, Set<String> storyIds,
-                                         DocumentHandle document, List<String> errors) {
+                                         DocumentHandle document, Set<String> knownSwatchIds,
+                                         Set<String> knownColorProfileIds, List<String> errors) {
         if (object instanceof TextFrame textFrame) {
             if (!storyIds.contains(textFrame.getStoryRef())) {
                 errors.add(pageLabel + ": textFrame '" + textFrame.getId() + "' has storyRef '" +
@@ -310,8 +341,25 @@ public final class BdocIntegrityValidator {
                 errors.add(pageLabel + ": imageFrame '" + imageFrame.getId() + "' has assetRef '" +
                         imageFrame.getAssetRef() + "' which does not exist in resources/");
             }
+            if (imageFrame.getProfileRef() != null && !knownColorProfileIds.contains(imageFrame.getProfileRef())) {
+                errors.add(pageLabel + ": imageFrame '" + imageFrame.getId() + "' has profileRef '"
+                        + imageFrame.getProfileRef() + "' which does not match any ColorProfile in manifest.json");
+            }
         } else if (object instanceof VectorShape shape) {
             validateShapeGeometry(shape, pageLabel, errors);
+            if (shape.getFillColorSwatchRef() != null && !knownSwatchIds.contains(shape.getFillColorSwatchRef())) {
+                errors.add(pageLabel + ": vectorShape '" + shape.getId() + "' has fillColorSwatchRef '"
+                        + shape.getFillColorSwatchRef() + "' which does not match any Swatch in styles.json");
+            }
+            if (shape.getStrokeColorSwatchRef() != null && !knownSwatchIds.contains(shape.getStrokeColorSwatchRef())) {
+                errors.add(pageLabel + ": vectorShape '" + shape.getId() + "' has strokeColorSwatchRef '"
+                        + shape.getStrokeColorSwatchRef() + "' which does not match any Swatch in styles.json");
+            }
+        } else if (object instanceof LineObject line) {
+            if (line.getStrokeColorSwatchRef() != null && !knownSwatchIds.contains(line.getStrokeColorSwatchRef())) {
+                errors.add(pageLabel + ": lineObject '" + line.getId() + "' has strokeColorSwatchRef '"
+                        + line.getStrokeColorSwatchRef() + "' which does not match any Swatch in styles.json");
+            }
         }
     }
 

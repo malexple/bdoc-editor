@@ -221,48 +221,66 @@ public class PageRenderer {
 
     private void renderShape(GraphicsContext gc, VectorShape shape, StylesCatalog styles) {
         Geometry g = shape.getGeometry();
-        gc.setStroke(Color.web("#2F4858"));
+
+        String strokeHex = ColorResolver.resolve(shape.getStrokeColor(), shape.getStrokeColorSwatchRef(), styles);
+        gc.setStroke(Color.web(strokeHex != null ? strokeHex : "#2F4858"));
         gc.setLineWidth(2.0);
+
+        String fillHex = ColorResolver.resolve(shape.getFillColor(), shape.getFillColorSwatchRef(), styles);
 
         PathModel pathData = shape.getPathData();
         if (pathData != null && !pathData.getPoints().isEmpty()
                 && !"primitive".equals(pathData.getContourType())) {
-            renderContour(gc, pathData);
+            renderContour(gc, pathData, fillHex);
             return;
         }
 
+        if (fillHex != null) {
+            gc.setFill(Color.web(fillHex));
+        }
+
         switch (shape.getShapeType()) {
-            case "rectangle" -> gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight());
-            case "rounded-rectangle" -> gc.strokeRoundRect(
-                    g.getX(), g.getY(), g.getWidth(), g.getHeight(),
-                    ObjectStyleResolver.resolveArcWidth(shape, styles),
-                    ObjectStyleResolver.resolveArcHeight(shape, styles));
+            case "rectangle" -> {
+                if (fillHex != null) gc.fillRect(g.getX(), g.getY(), g.getWidth(), g.getHeight());
+                gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight());
+            }
+            case "rounded-rectangle" -> {
+                double arcW = ObjectStyleResolver.resolveArcWidth(shape, styles);
+                double arcH = ObjectStyleResolver.resolveArcHeight(shape, styles);
+                if (fillHex != null) {
+                    gc.fillRoundRect(g.getX(), g.getY(), g.getWidth(), g.getHeight(), arcW, arcH);
+                }
+                gc.strokeRoundRect(g.getX(), g.getY(), g.getWidth(), g.getHeight(), arcW, arcH);
+            }
             case "line" -> gc.strokeLine(g.getX(), g.getY(), g.getX() + g.getWidth(), g.getY() + g.getHeight());
-            case "ellipse" -> gc.strokeOval(g.getX(), g.getY(), g.getWidth(), g.getHeight());
+            case "ellipse" -> {
+                if (fillHex != null) gc.fillOval(g.getX(), g.getY(), g.getWidth(), g.getHeight());
+                gc.strokeOval(g.getX(), g.getY(), g.getWidth(), g.getHeight());
+            }
             case "polygon" -> gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight()); // fallback, если pathData пуст
             default -> throw new IllegalArgumentException("Unknown shapeType: " + shape.getShapeType());
         }
     }
 
-    private void renderContourOrFallback(GraphicsContext gc, VectorShape shape) {
+    private void renderContourOrFallback(GraphicsContext gc, VectorShape shape, String fillHex) {
         PathModel pathData = shape.getPathData();
         if (pathData == null || pathData.getPoints().isEmpty()) {
             Geometry g = shape.getGeometry();
             gc.strokeRect(g.getX(), g.getY(), g.getWidth(), g.getHeight());
             return;
         }
-        renderContour(gc, pathData);
+        renderContour(gc, pathData, fillHex);
     }
 
     /**
      * Обобщённый рендер контура PathModel: поддерживает несколько суб-контуров
-     * (CompoundPath через повторяющиеся команды "M" в одном points-массиве —
-     * пример "буква О с дыркой"), команды M/L/C и fillRule even-odd/non-zero.
-     * Заливка не включена явно (у VectorShape пока нет отдельного fillColor),
-     * поэтому используется только stroke — включение fill предусмотрено на
-     * будущее без изменения сигнатуры метода.
+     * (CompoundPath через повторяющиеся команды "M" — пример "буква О с дыркой"),
+     * команды M/L/C и fillRule even-odd/non-zero. Заливка теперь берётся через
+     * ColorResolver (Вопросы 5, 7) вместо хардкода — fillHex==null оставляет
+     * старое поведение (полупрозрачный дефолт), заданный fillColor/swatchRef
+     * даёт непрозрачную заливку сплошным цветом.
      */
-    private void renderContour(GraphicsContext gc, PathModel pathData) {
+    private void renderContour(GraphicsContext gc, PathModel pathData, String fillHex) {
         gc.save();
         gc.setFillRule("even-odd".equals(pathData.getFillRule()) ? FillRule.EVEN_ODD : FillRule.NON_ZERO);
         gc.beginPath();
@@ -276,7 +294,7 @@ public class PageRenderer {
         }
         gc.closePath();
 
-        gc.setFill(Color.web("#475569", 0.6));
+        gc.setFill(fillHex != null ? Color.web(fillHex, 1.0) : Color.web("#475569", 0.6));
         gc.fill();
         gc.stroke();
         gc.restore();

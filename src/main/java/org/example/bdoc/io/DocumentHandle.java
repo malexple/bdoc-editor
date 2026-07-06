@@ -10,10 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * Открытый .bdoc-документ: манифест и stories загружены в память,
- * страницы подгружаются по требованию через loadPage(index).
- */
 public final class DocumentHandle implements Closeable {
 
     private final BdocContainer container;
@@ -44,23 +40,16 @@ public final class DocumentHandle implements Closeable {
     public int getPageCount() { return manifest.getPages().size(); }
     public StylesCatalog getStyles() { return styles; }
     public TemplatesCatalog getTemplates() { return templates; }
+    public Manifest getManifest() { return manifest; }
 
     public StoryModel getStory(String storyId) {
         return storiesById.get(storyId);
     }
 
-    /**
-     * Возвращает шаблон страницы по её templateRef, либо null, если
-     * страница не привязана к мастеру или мастер не найден.
-     */
     public MasterPage getMasterPage(String templateRef) {
         return templates.findMasterPage(templateRef);
     }
 
-    /**
-     * Загружает страницу по логическому номеру (1-based), используя CBOR-парсер.
-     * Результат кэшируется, повторный вызов не обращается к архиву.
-     */
     public PageModel loadPage(int index) throws IOException {
         PageModel cached = pageCache.get(index);
         if (cached != null) {

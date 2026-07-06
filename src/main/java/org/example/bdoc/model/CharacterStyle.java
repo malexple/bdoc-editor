@@ -11,6 +11,7 @@ public final class CharacterStyle {
     private final boolean bold;
     private final boolean italic;
     private final String color;
+    private final String colorSwatchRef;
 
     @JsonCreator
     public CharacterStyle(
@@ -20,7 +21,8 @@ public final class CharacterStyle {
             @JsonProperty("fontSize") Double fontSize,
             @JsonProperty("bold") boolean bold,
             @JsonProperty("italic") boolean italic,
-            @JsonProperty("color") String color) {
+            @JsonProperty("color") String color,
+            @JsonProperty("colorSwatchRef") String colorSwatchRef) {
         this.id = id;
         this.basedOn = basedOn;
         this.fontFamily = fontFamily;
@@ -28,6 +30,13 @@ public final class CharacterStyle {
         this.bold = bold;
         this.italic = italic;
         this.color = color;
+        this.colorSwatchRef = colorSwatchRef;
+    }
+
+    // Совместимость со старыми вызовами в SampleDocuments (7 параметров)
+    public CharacterStyle(String id, String basedOn, String fontFamily, Double fontSize,
+                          boolean bold, boolean italic, String color) {
+        this(id, basedOn, fontFamily, fontSize, bold, italic, color, null);
     }
 
     public String getId() { return id; }
@@ -37,4 +46,5 @@ public final class CharacterStyle {
     public boolean isBold() { return bold; }
     public boolean isItalic() { return italic; }
     public String getColor() { return color; }
+    public String getColorSwatchRef() { return colorSwatchRef; }
 }
