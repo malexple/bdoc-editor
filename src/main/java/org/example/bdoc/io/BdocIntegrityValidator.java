@@ -318,9 +318,6 @@ public final class BdocIntegrityValidator {
             validateObjectSpecifics(object, pageLabel, storyIds, document, knownSwatchIds, knownColorProfileIds, errors);
             validateObjectStyleRef(object, document.getStyles(), pageLabel, errors);
             validateAnchoredSettings(object, storyIds, document, pageLabel, errors);
-            validateObjectSpecifics(object, pageLabel, storyIds, document, knownSwatchIds, knownColorProfileIds, errors);
-            validateObjectStyleRef(object, document.getStyles(), pageLabel, errors);
-            validateAnchoredSettings(object, storyIds, document, pageLabel, errors);
             validatePrepressGeometry(object, page, masterPage, document, pageLabel, errors);
         }
 

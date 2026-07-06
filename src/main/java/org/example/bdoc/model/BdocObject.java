@@ -2,7 +2,9 @@ package org.example.bdoc.model;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.JsonNode;
 
+import java.util.Map;
 import java.util.Set;
 
 @JsonTypeInfo(
@@ -38,24 +40,33 @@ public abstract class BdocObject {
     protected final TransformModel transform;
     protected final PathModel pathData;
 
-    // Этап 1.6: стиль объекта (ObjectStyle), локальная прозрачность
-    // и декларативная заготовка привязки к слову в тексте.
     protected final String objectStyleRef;
     protected final Double opacity;
     protected final AnchoredObjectSettings anchoredSettings;
 
+    /**
+     * Этап 1.9 (Вопрос 4): "песочница" для сторонних плагинов (ИИ-метаданные
+     * распознавания, AR-маркеры, координаты уверенности OCR и т.п.).
+     * Map<String, JsonNode> выбран вместо Map<String, Object> — JsonNode это
+     * безопасное древовидное представление Jackson, не может содержать
+     * циклы, "живые" Java-объекты или исполняемый код, и сериализуется в
+     * CBOR/JSON нативно быстро, без рефлексии. Ядро (валидатор, рендерер)
+     * никогда не читает эту карту — она полностью прозрачна для плагинов.
+     */
+    protected final Map<String, JsonNode> customData;
+
     protected BdocObject(String id, String layerRef, Geometry geometry) {
-        this(id, layerRef, geometry, null, null, true, null, null, false, false, null, null, null, null, null, null, null);
+        this(id, layerRef, geometry, null, null, true, null, null, false, false, null, null, null, null, null, null, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
                          String masterSourceId, Set<String> overriddenProperties) {
-        this(id, layerRef, geometry, masterSourceId, overriddenProperties, true, null, null, false, false, null, null, null, null, null, null, null);
+        this(id, layerRef, geometry, masterSourceId, overriddenProperties, true, null, null, false, false, null, null, null, null, null, null, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
                          String masterSourceId, Set<String> overriddenProperties, Boolean visible) {
-        this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible, null, null, false, false, null, null, null, null, null, null, null);
+        this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible, null, null, false, false, null, null, null, null, null, null, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
@@ -63,7 +74,7 @@ public abstract class BdocObject {
                          Geometry clipGeometry, String maskRef, Boolean mask,
                          Boolean artifact, String artifactType, TextWrapModel textWrap) {
         this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
-                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, null, null, null, null, null);
+                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, null, null, null, null, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
@@ -72,7 +83,7 @@ public abstract class BdocObject {
                          Boolean artifact, String artifactType, TextWrapModel textWrap,
                          PathModel pathData) {
         this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
-                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData, null, null, null, null);
+                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData, null, null, null, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
@@ -81,7 +92,7 @@ public abstract class BdocObject {
                          Boolean artifact, String artifactType, TextWrapModel textWrap,
                          PathModel pathData, TransformModel transform) {
         this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
-                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData, transform, null, null, null);
+                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData, transform, null, null, null, null);
     }
 
     protected BdocObject(String id, String layerRef, Geometry geometry,
@@ -90,6 +101,18 @@ public abstract class BdocObject {
                          Boolean artifact, String artifactType, TextWrapModel textWrap,
                          PathModel pathData, TransformModel transform,
                          String objectStyleRef, Double opacity, AnchoredObjectSettings anchoredSettings) {
+        this(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
+                clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData, transform,
+                objectStyleRef, opacity, anchoredSettings, null);
+    }
+
+    protected BdocObject(String id, String layerRef, Geometry geometry,
+                         String masterSourceId, Set<String> overriddenProperties, Boolean visible,
+                         Geometry clipGeometry, String maskRef, Boolean mask,
+                         Boolean artifact, String artifactType, TextWrapModel textWrap,
+                         PathModel pathData, TransformModel transform,
+                         String objectStyleRef, Double opacity, AnchoredObjectSettings anchoredSettings,
+                         Map<String, JsonNode> customData) {
         this.id = id;
         this.layerRef = layerRef;
         this.geometry = geometry;
@@ -107,6 +130,7 @@ public abstract class BdocObject {
         this.objectStyleRef = objectStyleRef;
         this.opacity = opacity;
         this.anchoredSettings = anchoredSettings;
+        this.customData = customData != null ? customData : Map.of();
     }
 
     public TransformModel getTransform() { return transform; }
@@ -130,6 +154,7 @@ public abstract class BdocObject {
     public String getObjectStyleRef() { return objectStyleRef; }
     public Double getOpacity() { return opacity; }
     public AnchoredObjectSettings getAnchoredSettings() { return anchoredSettings; }
+    public Map<String, JsonNode> getCustomData() { return customData; }
 
     public abstract String getType();
 }
