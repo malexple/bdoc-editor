@@ -18,6 +18,9 @@ public final class CharacterStyleResolver {
      * Разрешает CharacterStyle span'а, используя эффективный стиль параграфа
      * как базу для незаданных полей. Цвет разрешается по модели Smart Fallback:
      * colorSwatchRef -> ColorResolver -> rawColor -> цвет параграфа (уже резолвлен).
+     * textOverprint (Этап 1.8, Вопрос 5) — nullable Boolean, каскадится по
+     * цепочке basedOn так же, как fontFamily/fontSize; если не задан нигде,
+     * дефолт false (не наложение, обычная выворотка).
      */
     public EffectiveCharacterStyle resolve(String characterStyleRef, EffectiveParagraphStyle paragraphFallback) {
         String fontFamily = null;
@@ -26,6 +29,7 @@ public final class CharacterStyleResolver {
         Boolean italic = null;
         String color = null;
         String colorSwatchRef = null;
+        Boolean textOverprint = null;
 
         Set<String> visited = new HashSet<>();
         String currentId = characterStyleRef;
@@ -47,6 +51,7 @@ public final class CharacterStyleResolver {
             if (italic == null && style.isItalic()) italic = true;
             if (color == null) color = style.getColor();
             if (colorSwatchRef == null) colorSwatchRef = style.getColorSwatchRef();
+            if (textOverprint == null) textOverprint = style.getTextOverprint();
 
             currentId = style.getBasedOn();
         }
@@ -58,7 +63,8 @@ public final class CharacterStyleResolver {
                 fontSize != null ? fontSize : paragraphFallback.getFontSize(),
                 bold != null && bold,
                 italic != null && italic,
-                resolvedColor != null ? resolvedColor : paragraphFallback.getColor()
+                resolvedColor != null ? resolvedColor : paragraphFallback.getColor(),
+                textOverprint != null && textOverprint
         );
     }
 }

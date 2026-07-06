@@ -39,6 +39,8 @@ public class PageRenderer {
                 .sorted(Comparator.comparingInt(o -> page.getLayers().indexOf(layers.get(o.getLayerRef()))))
                 .forEach(object -> renderObject(gc, object, document, layers.get(object.getLayerRef()),
                         styleResolver, selectedObject, isRawMasterObject(object, masterPage)));
+
+        renderPrepressGuides(gc, document, page, masterPage);
     }
 
     /**
@@ -526,6 +528,117 @@ public class PageRenderer {
             double cellH = rowHeights[cell.getRowIndex()];
             String text = cellStory.getJoinedText();
             gc.fillText(text, cellX + 6, cellY + cellH / 2 + 4, cellW - 12);
+        }
+    }
+
+    /**
+     * Editor-only визуализация Prepress-геометрии (Этап 1.8, Вопросы 6, 4).
+     * Рисуется ПОСЛЕ всех объектов, чтобы служебные линии не перекрывались
+     * контентом. TrimBox совпадает с границами Canvas (v0.1 не расширяет холст
+     * под MediaBox — см. Вопрос 6), поэтому bleed рисуется прямо по кромке.
+     */
+    private void renderPrepressGuides(GraphicsContext gc, DocumentHandle document, PageModel page, MasterPage masterPage) {
+        Manifest manifest = document.getManifest();
+        double bleed = PrepressResolver.resolveBleedMargin(page, masterPage, manifest);
+        double safety = PrepressResolver.resolveSafetyMargin(page, masterPage, manifest);
+        PrintMarksSettings marks = PrepressResolver.resolvePrintMarksSettings(page, masterPage, manifest);
+
+        double w = page.getWidth();
+        double h = page.getHeight();
+
+        gc.save();
+        gc.setGlobalAlpha(1.0);
+
+        if (bleed > 0) {
+            gc.setStroke(Color.web("#F97316"));
+            gc.setLineWidth(1.0);
+            gc.setLineDashes(null);
+            gc.strokeRect(0.5, 0.5, w - 1, h - 1);
+        }
+
+        if (safety > 0) {
+            gc.setStroke(Color.web("#0EA5E9"));
+            gc.setLineWidth(1.0);
+            gc.setLineDashes(4.0, 3.0);
+            gc.strokeRect(safety, safety, w - 2 * safety, h - 2 * safety);
+            gc.setLineDashes(null);
+        }
+
+        if (marks.isShowCropMarks()) {
+            renderCropMarks(gc, w, h, bleed);
+        }
+        if (marks.isShowRegistrationMarks()) {
+            renderRegistrationMarks(gc, w, h);
+        }
+        if (marks.isShowColorBars()) {
+            renderColorBar(gc, document, page, w, h);
+        }
+
+        gc.restore();
+    }
+
+    private void renderCropMarks(GraphicsContext gc, double w, double h, double bleed) {
+        double markLength = Math.max(8.0, bleed);
+        gc.setStroke(Color.BLACK);
+        gc.setLineWidth(0.75);
+
+        double[][] corners = {{0, 0}, {w, 0}, {0, h}, {w, h}};
+        for (double[] corner : corners) {
+            double cx = corner[0];
+            double cy = corner[1];
+            double dirX = cx == 0 ? -1 : 1;
+            double dirY = cy == 0 ? -1 : 1;
+            gc.strokeLine(cx, cy + dirY * 2, cx, cy + dirY * markLength);
+            gc.strokeLine(cx + dirX * 2, cy, cx + dirX * markLength, cy);
+        }
+    }
+
+    private void renderRegistrationMarks(GraphicsContext gc, double w, double h) {
+        double r = 4.0;
+        double[][] positions = {{w / 2, 0}, {w / 2, h}, {0, h / 2}, {w, h / 2}};
+        gc.setStroke(Color.BLACK);
+        gc.setLineWidth(0.75);
+        for (double[] pos : positions) {
+            double cx = pos[0];
+            double cy = pos[1];
+            gc.strokeOval(cx - r, cy - r, r * 2, r * 2);
+            gc.strokeLine(cx - r, cy, cx + r, cy);
+            gc.strokeLine(cx, cy - r, cx, cy + r);
+        }
+    }
+
+    /**
+     * Программная генерация шкалы цвета из реально используемых на странице
+     * Swatches (Вопрос 4). Верстальщик не собирает её вручную — рендерер
+     * запрашивает палитру у StylesCatalog по фактическим swatchRef объектов.
+     */
+    private void renderColorBar(GraphicsContext gc, DocumentHandle document, PageModel page, double w, double h) {
+        Set<String> usedSwatchRefs = new LinkedHashSet<>();
+        for (BdocObject object : page.getObjects()) {
+            if (object instanceof VectorShape shape) {
+                if (shape.getFillColorSwatchRef() != null) usedSwatchRefs.add(shape.getFillColorSwatchRef());
+                if (shape.getStrokeColorSwatchRef() != null) usedSwatchRefs.add(shape.getStrokeColorSwatchRef());
+            } else if (object instanceof LineObject line) {
+                if (line.getStrokeColorSwatchRef() != null) usedSwatchRefs.add(line.getStrokeColorSwatchRef());
+            }
+        }
+        if (usedSwatchRefs.isEmpty()) return;
+
+        double chipSize = 10.0;
+        double startX = 8.0;
+        double y = h - chipSize - 4.0;
+
+        gc.setLineWidth(0.5);
+        gc.setStroke(Color.web("#94A3B8"));
+        int i = 0;
+        for (String swatchRef : usedSwatchRefs) {
+            String hex = ColorResolver.resolve(null, swatchRef, document.getStyles());
+            if (hex == null) continue;
+            double x = startX + i * (chipSize + 2.0);
+            gc.setFill(Color.web(hex));
+            gc.fillRect(x, y, chipSize, chipSize);
+            gc.strokeRect(x, y, chipSize, chipSize);
+            i++;
         }
     }
 }

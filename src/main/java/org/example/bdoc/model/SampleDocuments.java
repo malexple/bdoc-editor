@@ -3,6 +3,7 @@ package org.example.bdoc.model;
 import org.example.bdoc.io.BdocContainerSerializer;
 import org.example.bdoc.io.BdocContainerSerializer.Writer;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.io.File;
@@ -39,6 +40,7 @@ public final class SampleDocuments {
             writePage5(writer);
             writePage6(writer);
             writePage7(writer);
+            writePage8(writer);
 
             writer.finish(
                     "doc-1", "BDoc Demo", "book",
@@ -712,7 +714,9 @@ public final class SampleDocuments {
                         10.0, 90.0, 80.0, 5.0, null),
                 Swatch.spot("swatch-pantone-gold-nofallback", "Pantone 872 C (без фолбека)", null),
                 Swatch.spot("swatch-pantone-red-calibrated", "Pantone 186 C (калиброван)", "#C8102E"),
-                new Swatch("swatch-archive-lab", "Архивный Lab-образец", "Lab", null, null, null, null, null)
+                new Swatch("swatch-archive-lab", "Архивный Lab-образец", "Lab", null, null, null, null, null),
+                Swatch.cmyk("swatch-cyan-cmyk-test", "Полиграфический циан (без фолбека)",
+                        100.0, 10.0, 0.0, 10.0, null)
         );
     }
 
@@ -842,7 +846,8 @@ public final class SampleDocuments {
                         PathPoint.lineTo(252.3, 332.3)
                 ), "even-odd"),
                 null,
-                null, "#0F172A", "swatch-brand-navy", null
+                null, "#0F172A", "swatch-brand-navy", null,
+                null, null
         );
 
         // LineObject окрашен через strokeColorSwatchRef на калиброванный Pantone.
@@ -885,5 +890,140 @@ public final class SampleDocuments {
                 readingOrder7
         );
         writer.writePage(page7);
+    }
+
+    /**
+     * Генерирует compound-контур "восьмиугольник с восьмиугольной дыркой"
+     * (аналог демо-буквы «О» из Этапа 1.7, но с прямыми гранями). Внутреннее
+     * кольцо вычитается благодаря fillRule=even-odd — направление обхода
+     * колец для even-odd не важно, важна только чётность пересечений луча.
+     */
+    private static PathModel buildOctagonWithHole(double cx, double cy, double outerRadius, double innerRadius) {
+        List<PathPoint> points = new ArrayList<>();
+        points.addAll(buildOctagonRing(cx, cy, outerRadius));
+        points.addAll(buildOctagonRing(cx, cy, innerRadius));
+        return new PathModel("compound", points, "even-odd");
+    }
+
+    private static List<PathPoint> buildOctagonRing(double cx, double cy, double radius) {
+        List<PathPoint> ring = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            double angle = Math.toRadians(22.5 + i * 45.0);
+            double x = cx + radius * Math.cos(angle);
+            double y = cy + radius * Math.sin(angle);
+            ring.add(i == 0 ? PathPoint.moveTo(x, y) : PathPoint.lineTo(x, y));
+        }
+        return ring;
+    }
+
+    // ==================== Страница 8: Prepress-геометрия (Этап 1.8) ====================
+
+    /**
+     * Демонстрирует все аспекты Этапа 1.8:
+     *  1. bleedMargin=3мм и safetyMargin=5мм заданы прямо на PageModel —
+     *     PageRenderer.renderPrepressGuides() нарисует оранжевую линию по
+     *     кромке холста и голубой пунктирный прямоугольник внутри.
+     *  2. shape-cmyk-test — восьмиугольник с дыркой, залитый через
+     *     swatch-cyan-cmyk-test (CMYK без fallbackRgb) — цвет считается
+     *     формулой на лету, центр фигуры остаётся прозрачным (even-odd).
+     *  3. TextFrame стоит строго внутри safetyMargin — валидатор пропускает
+     *     страницу без ошибок. Сценарий нарушения — см. Javadoc метода
+     *     buildSafetyViolationSample() ниже.
+     */
+    private static void writePage8(Writer writer) throws IOException {
+        StoryModel story8 = new StoryModel("story-8", List.of(
+                new Paragraph("heading", "heading-1", "Prepress-геометрия (Этап 1.8)"),
+                new Paragraph("body", "body-text",
+                        "Оранжевая линия по периметру — вылет под обрез (bleedMargin = 3 мм). "
+                                + "Голубой пунктир — безопасная зона (safetyMargin = 5 мм). Восьмиугольник в центре "
+                                + "залит по формуле CMYK на лету (Swatch без fallbackRgb), а его внутренняя дыра "
+                                + "прозрачна благодаря fillRule=even-odd.")
+        ));
+        writer.writeStory(story8);
+
+        LayerModel decorLayer8 = new LayerModel("layer-decor", "Decoration", "decoration", true, 1.0);
+        LayerModel textLayer8 = new LayerModel("layer-text", "Text", "text", true, 1.0);
+        LayerModel footerLayer8 = new LayerModel("layer-footer", "Footer", "header-footer", true, 1.0);
+
+        TextFrame headingFrame8 = new TextFrame(
+                "text-8-heading", "layer-text",
+                new Geometry(70.0, 120.0, 455.0, 50.0),
+                "story-8"
+        );
+
+        double pageWidth = 595.0;
+        double pageHeight = 842.0;
+        double centerX = pageWidth / 2.0;
+        double centerY = pageHeight / 2.0;
+        double outerRadius = 90.0;
+        double innerRadius = 45.0;
+
+        VectorShape shapeCmykTest = new VectorShape(
+                "shape-cmyk-test", "layer-decor",
+                new Geometry(centerX - outerRadius, centerY - outerRadius, outerRadius * 2, outerRadius * 2),
+                "polygon",
+                null, null, true,
+                null, null, false, false, null, null,
+                buildOctagonWithHole(centerX, centerY, outerRadius, innerRadius),
+                null,
+                null, "#0F172A", "swatch-cyan-cmyk-test", null,
+                null, null
+        );
+
+        double safety = Unit.MM.toPoints(5.0);
+
+        // TextFrame стоит строго внутри safetyMargin (запас 20pt от границы),
+        // поэтому Preflight-валидатор пропускает страницу без ошибок.
+        TextFrame captionFrame8 = new TextFrame(
+                "text-8-caption", "layer-text",
+                new Geometry(safety + 20.0, pageHeight - 160.0, pageWidth - (safety + 20.0) * 2, 100.0),
+                "story-8"
+        );
+
+        List<ReadingSegment> readingOrder8 = List.of(
+                new ReadingSegment(1, "text-8-heading", "heading"),
+                new ReadingSegment(2, "text-8-caption", "body")
+        );
+
+        PageModel page8 = new PageModel(
+                "page-8", 8, pageWidth, pageHeight, "pt", "master-A",
+                List.of(decorLayer8, textLayer8, footerLayer8),
+                List.of(headingFrame8, shapeCmykTest, captionFrame8),
+                readingOrder8,
+                Unit.MM.toPoints(3.0),
+                safety,
+                null
+        );
+        writer.writePage(page8);
+    }
+
+    /**
+     * ДЕМОНСТРАЦИЯ ВАЛИДАЦИИ (не вызывается из writeSample() автоматически,
+     * так как намеренно ломает Preflight и должен использоваться только
+     * в JUnit-тесте на отрицательный сценарий, например:
+     * assertThrows(BdocValidationException.class, () -> validator.validate(doc)))
+     *
+     * Возвращает PageModel, где TextFrame сдвинут на x=5.0 — глубоко внутрь
+     * safetyMargin=5мм (14.17pt) от левого края. BdocIntegrityValidator
+     * должен выбросить ошибку "Text content is too close to the page trim edge!".
+     */
+    public static PageModel buildSafetyViolationSample() {
+        LayerModel textLayer = new LayerModel("layer-text", "Text", "text", true, 1.0);
+
+        TextFrame violatingFrame = new TextFrame(
+                "text-violation", "layer-text",
+                new Geometry(5.0, 120.0, 300.0, 50.0), // x=5.0 залезает под safetyMargin=14.17pt
+                "story-8"
+        );
+
+        return new PageModel(
+                "page-violation", 1, 595.0, 842.0, "pt", null,
+                List.of(textLayer),
+                List.of(violatingFrame),
+                List.of(),
+                Unit.MM.toPoints(3.0),
+                Unit.MM.toPoints(5.0),
+                null
+        );
     }
 }

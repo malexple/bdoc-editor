@@ -17,6 +17,11 @@ public final class Manifest {
     private final List<ColorProfile> colorProfiles;
     private final String outputIntentProfileRef;
 
+    // Этап 1.8: глобальный уровень каскада prepress-геометрии.
+    private final Double defaultBleedMargin;
+    private final Double defaultSafetyMargin;
+    private final PrintMarksSettings defaultPrintMarksSettings;
+
     @JsonCreator
     public Manifest(
             @JsonProperty("id") String id,
@@ -28,7 +33,10 @@ public final class Manifest {
             @JsonProperty("stories") List<ManifestStoryEntry> stories,
             @JsonProperty("templates") List<ManifestTemplateEntry> templates,
             @JsonProperty("colorProfiles") List<ColorProfile> colorProfiles,
-            @JsonProperty("outputIntentProfileRef") String outputIntentProfileRef) {
+            @JsonProperty("outputIntentProfileRef") String outputIntentProfileRef,
+            @JsonProperty("defaultBleedMargin") Double defaultBleedMargin,
+            @JsonProperty("defaultSafetyMargin") Double defaultSafetyMargin,
+            @JsonProperty("defaultPrintMarksSettings") PrintMarksSettings defaultPrintMarksSettings) {
         this.id = id;
         this.title = title;
         this.documentType = documentType;
@@ -39,13 +47,25 @@ public final class Manifest {
         this.templates = templates != null ? templates : List.of();
         this.colorProfiles = colorProfiles != null ? colorProfiles : List.of();
         this.outputIntentProfileRef = outputIntentProfileRef;
+        this.defaultBleedMargin = defaultBleedMargin;
+        this.defaultSafetyMargin = defaultSafetyMargin;
+        this.defaultPrintMarksSettings = defaultPrintMarksSettings;
+    }
+
+    // Совместимость с Этапом 1.7
+    public Manifest(
+            String id, String title, String documentType, String version, String language,
+            List<ManifestPageEntry> pages, List<ManifestStoryEntry> stories, List<ManifestTemplateEntry> templates,
+            List<ColorProfile> colorProfiles, String outputIntentProfileRef) {
+        this(id, title, documentType, version, language, pages, stories, templates,
+                colorProfiles, outputIntentProfileRef, null, null, null);
     }
 
     // Совместимость со старым вызовом в BdocContainerSerializer.Writer.finish(...)
     public Manifest(
             String id, String title, String documentType, String version, String language,
             List<ManifestPageEntry> pages, List<ManifestStoryEntry> stories, List<ManifestTemplateEntry> templates) {
-        this(id, title, documentType, version, language, pages, stories, templates, null, null);
+        this(id, title, documentType, version, language, pages, stories, templates, null, null, null, null, null);
     }
 
     public String getId() { return id; }
@@ -58,6 +78,9 @@ public final class Manifest {
     public List<ManifestTemplateEntry> getTemplates() { return templates; }
     public List<ColorProfile> getColorProfiles() { return colorProfiles; }
     public String getOutputIntentProfileRef() { return outputIntentProfileRef; }
+    public Double getDefaultBleedMargin() { return defaultBleedMargin; }
+    public Double getDefaultSafetyMargin() { return defaultSafetyMargin; }
+    public PrintMarksSettings getDefaultPrintMarksSettings() { return defaultPrintMarksSettings; }
 
     public ColorProfile findColorProfile(String id) {
         if (id == null) return null;

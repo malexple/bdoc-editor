@@ -16,6 +16,7 @@ public final class LineObject extends BdocObject {
     private final String startCap;
     private final String endCap;
     private final String strokeColorSwatchRef;
+    private final boolean strokeOverprint;
 
     public LineObject(String id, String layerRef, double x1, double y1, double x2, double y2,
                       double strokeWidth, String strokeColor, String strokePattern,
@@ -28,6 +29,16 @@ public final class LineObject extends BdocObject {
         this.startCap = startCap != null ? startCap : "none";
         this.endCap = endCap != null ? endCap : "none";
         this.strokeColorSwatchRef = null;
+        this.strokeOverprint = false;
+    }
+
+    public LineObject(String id, String layerRef, double x1, double y1, double x2, double y2,
+                      double strokeWidth, String strokeColor, String strokePattern,
+                      String startCap, String endCap,
+                      Boolean visible, PathModel pathData, TransformModel transform,
+                      String strokeColorSwatchRef) {
+        this(id, layerRef, x1, y1, x2, y2, strokeWidth, strokeColor, strokePattern,
+                startCap, endCap, visible, pathData, transform, strokeColorSwatchRef, false);
     }
 
     @JsonCreator
@@ -46,7 +57,8 @@ public final class LineObject extends BdocObject {
             @JsonProperty("visible") Boolean visible,
             @JsonProperty("pathData") PathModel pathData,
             @JsonProperty("transform") TransformModel transform,
-            @JsonProperty("strokeColorSwatchRef") String strokeColorSwatchRef) {
+            @JsonProperty("strokeColorSwatchRef") String strokeColorSwatchRef,
+            @JsonProperty("strokeOverprint") Boolean strokeOverprint) {
         super(id, layerRef, boundingBoxOf(x1, y1, x2, y2));
         this.x1 = x1; this.y1 = y1; this.x2 = x2; this.y2 = y2;
         this.strokeWidth = strokeWidth;
@@ -55,11 +67,10 @@ public final class LineObject extends BdocObject {
         this.startCap = startCap != null ? startCap : "none";
         this.endCap = endCap != null ? endCap : "none";
         this.strokeColorSwatchRef = strokeColorSwatchRef;
+        this.strokeOverprint = strokeOverprint != null ? strokeOverprint : false;
         if (visible != null) {
             this.visible = visible;
         }
-        // pathData у LineObject не используется на Этапе 1 (принимается,
-        // но игнорируется) — линия описывается через x1/y1/x2/y2.
     }
 
     private static Geometry boundingBoxOf(double x1, double y1, double x2, double y2) {
@@ -84,6 +95,7 @@ public final class LineObject extends BdocObject {
     public String getStartCap() { return startCap; }
     public String getEndCap() { return endCap; }
     public String getStrokeColorSwatchRef() { return strokeColorSwatchRef; }
+    public boolean isStrokeOverprint() { return strokeOverprint; }
 
     @Override
     public String getType() { return "LineObject"; }

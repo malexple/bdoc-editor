@@ -12,6 +12,7 @@ public final class CharacterStyle {
     private final boolean italic;
     private final String color;
     private final String colorSwatchRef;
+    private final Boolean textOverprint; // nullable для каскада наследования
 
     @JsonCreator
     public CharacterStyle(
@@ -22,7 +23,8 @@ public final class CharacterStyle {
             @JsonProperty("bold") boolean bold,
             @JsonProperty("italic") boolean italic,
             @JsonProperty("color") String color,
-            @JsonProperty("colorSwatchRef") String colorSwatchRef) {
+            @JsonProperty("colorSwatchRef") String colorSwatchRef,
+            @JsonProperty("textOverprint") Boolean textOverprint) {
         this.id = id;
         this.basedOn = basedOn;
         this.fontFamily = fontFamily;
@@ -31,12 +33,17 @@ public final class CharacterStyle {
         this.italic = italic;
         this.color = color;
         this.colorSwatchRef = colorSwatchRef;
+        this.textOverprint = textOverprint;
     }
 
-    // Совместимость со старыми вызовами в SampleDocuments (7 параметров)
+    public CharacterStyle(String id, String basedOn, String fontFamily, Double fontSize,
+                          boolean bold, boolean italic, String color, String colorSwatchRef) {
+        this(id, basedOn, fontFamily, fontSize, bold, italic, color, colorSwatchRef, null);
+    }
+
     public CharacterStyle(String id, String basedOn, String fontFamily, Double fontSize,
                           boolean bold, boolean italic, String color) {
-        this(id, basedOn, fontFamily, fontSize, bold, italic, color, null);
+        this(id, basedOn, fontFamily, fontSize, bold, italic, color, null, null);
     }
 
     public String getId() { return id; }
@@ -47,4 +54,5 @@ public final class CharacterStyle {
     public boolean isItalic() { return italic; }
     public String getColor() { return color; }
     public String getColorSwatchRef() { return colorSwatchRef; }
+    public Boolean getTextOverprint() { return textOverprint; }
 }

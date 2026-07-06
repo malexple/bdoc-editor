@@ -318,6 +318,10 @@ public final class BdocIntegrityValidator {
             validateObjectSpecifics(object, pageLabel, storyIds, document, knownSwatchIds, knownColorProfileIds, errors);
             validateObjectStyleRef(object, document.getStyles(), pageLabel, errors);
             validateAnchoredSettings(object, storyIds, document, pageLabel, errors);
+            validateObjectSpecifics(object, pageLabel, storyIds, document, knownSwatchIds, knownColorProfileIds, errors);
+            validateObjectStyleRef(object, document.getStyles(), pageLabel, errors);
+            validateAnchoredSettings(object, storyIds, document, pageLabel, errors);
+            validatePrepressGeometry(object, page, masterPage, document, pageLabel, errors);
         }
 
         Set<String> availableObjectIds = new HashSet<>(objectIds);
@@ -326,6 +330,7 @@ public final class BdocIntegrityValidator {
         validateGroups(page, objectIds, errors, pageLabel);
         validateTableFrames(page, storyIds, errors, pageLabel);
         validateMaskReferences(page, objectIds, errors, pageLabel);
+
     }
 
     private void validateObjectSpecifics(BdocObject object, String pageLabel, Set<String> storyIds,
@@ -524,6 +529,65 @@ public final class BdocIntegrityValidator {
                 errors.add(pageLabel + ": anchored object '" + object.getId() + "' has targetSpanIndex ["
                         + settings.getTargetSpanIndex() + "] out of bounds for story '"
                         + settings.getStoryRef() + "' (total spans: " + totalSpans + ")");
+            }
+        }
+    }
+
+    /**
+     * Preflight-проверки Этапа 1.8 (Вопрос 7):
+     * 1. Ширина/высота строго больше нуля (защита от зависания TextWrapper).
+     * 2. Объект должен пересекаться с MediaBox (TrimBox + bleedMargin).
+     * 3. TextFrame на слое типа "text" не может выходить за safetyMargin.
+     */
+    private void validatePrepressGeometry(BdocObject object, PageModel page, MasterPage masterPage,
+                                          DocumentHandle document, String pageLabel, List<String> errors) {
+        if (object instanceof LineObject) {
+            return; // у LineObject своя геометрия точек, правило не применяется
+        }
+
+        boolean isDecorativeLineShape = object instanceof VectorShape vs && "line".equals(vs.getShapeType());
+
+        Geometry g = object.getGeometry();
+
+        if (!isDecorativeLineShape && (g.getWidth() <= 0.0 || g.getHeight() <= 0.0)) {
+            errors.add(pageLabel + ": object '" + object.getId() + "' has non-positive geometry ("
+                    + g.getWidth() + "x" + g.getHeight() + "), width and height must be strictly greater than zero");
+            return;
+        }
+
+        double bleed = PrepressResolver.resolveBleedMargin(page, masterPage, document.getManifest());
+        double mediaMinX = -bleed;
+        double mediaMinY = -bleed;
+        double mediaMaxX = page.getWidth() + bleed;
+        double mediaMaxY = page.getHeight() + bleed;
+
+        boolean intersectsMedia = g.getX() < mediaMaxX && g.getX() + g.getWidth() > mediaMinX
+                && g.getY() < mediaMaxY && g.getY() + g.getHeight() > mediaMinY;
+        if (!intersectsMedia) {
+            errors.add(pageLabel + ": object '" + object.getId() + "' is completely outside MediaBox ("
+                    + "geometry x=" + g.getX() + ", y=" + g.getY() + ", w=" + g.getWidth() + ", h=" + g.getHeight()
+                    + ") — object is out of bounds and unreachable on the printed sheet");
+        }
+
+        if (object instanceof TextFrame textFrame) {
+            LayerModel layer = page.getLayers().stream()
+                    .filter(l -> l.getId().equals(textFrame.getLayerRef()))
+                    .findFirst()
+                    .orElse(null);
+            if (layer != null && "text".equals(layer.getRole())) {
+                double safety = PrepressResolver.resolveSafetyMargin(page, masterPage, document.getManifest());
+                double safetyMinX = safety;
+                double safetyMinY = safety;
+                double safetyMaxX = page.getWidth() - safety;
+                double safetyMaxY = page.getHeight() - safety;
+
+                boolean withinSafety = g.getX() >= safetyMinX && g.getY() >= safetyMinY
+                        && g.getX() + g.getWidth() <= safetyMaxX && g.getY() + g.getHeight() <= safetyMaxY;
+                if (!withinSafety) {
+                    errors.add(pageLabel + ": textFrame '" + textFrame.getId()
+                            + "' crosses the safetyMargin boundary (safetyMargin=" + safety
+                            + "pt) — text on a TEXT layer must stay fully within the safe area to avoid trimming damage");
+                }
             }
         }
     }

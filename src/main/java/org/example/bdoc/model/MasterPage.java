@@ -5,16 +5,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
 
-/**
- * Шаблон страницы. Объекты мастера НЕ копируются на страницы —
- * PageRenderer подмешивает их динамически через PageModel.templateRef.
- * Все геометрические величины — в pt.
- *
- * templateRef в PageModel сделан строкой (одиночная ссылка) в v0.1,
- * но данные MasterPage спроектированы так, что переход к массиву
- * ссылок (multi-slot: grid + pagination отдельно) не потребует
- * изменения структуры самого MasterPage.
- */
 public final class MasterPage {
 
     private final String id;
@@ -27,6 +17,11 @@ public final class MasterPage {
     private final List<Guide> guides;
     private final List<BdocObject> objects;
 
+    // Этап 1.8: шаблонный уровень каскада prepress-геометрии.
+    private final Double bleedMargin;
+    private final Double safetyMargin;
+    private final PrintMarksSettings printMarksSettings;
+
     @JsonCreator
     public MasterPage(
             @JsonProperty("id") String id,
@@ -37,7 +32,10 @@ public final class MasterPage {
             @JsonProperty("grid") GridModel grid,
             @JsonProperty("baselineGrid") BaselineGrid baselineGrid,
             @JsonProperty("guides") List<Guide> guides,
-            @JsonProperty("objects") List<BdocObject> objects) {
+            @JsonProperty("objects") List<BdocObject> objects,
+            @JsonProperty("bleedMargin") Double bleedMargin,
+            @JsonProperty("safetyMargin") Double safetyMargin,
+            @JsonProperty("printMarksSettings") PrintMarksSettings printMarksSettings) {
         this.id = id;
         this.name = name;
         this.width = width;
@@ -47,6 +45,15 @@ public final class MasterPage {
         this.baselineGrid = baselineGrid != null ? baselineGrid : BaselineGrid.disabled();
         this.guides = guides != null ? guides : List.of();
         this.objects = objects != null ? objects : List.of();
+        this.bleedMargin = bleedMargin;
+        this.safetyMargin = safetyMargin;
+        this.printMarksSettings = printMarksSettings;
+    }
+
+    /** Совместимость с Этапом 1.6: конструктор без prepress-полей. */
+    public MasterPage(String id, String name, double width, double height, MarginModel margin,
+                      GridModel grid, BaselineGrid baselineGrid, List<Guide> guides, List<BdocObject> objects) {
+        this(id, name, width, height, margin, grid, baselineGrid, guides, objects, null, null, null);
     }
 
     public String getId() { return id; }
@@ -58,6 +65,9 @@ public final class MasterPage {
     public BaselineGrid getBaselineGrid() { return baselineGrid; }
     public List<Guide> getGuides() { return guides; }
     public List<BdocObject> getObjects() { return objects; }
+    public Double getBleedMargin() { return bleedMargin; }
+    public Double getSafetyMargin() { return safetyMargin; }
+    public PrintMarksSettings getPrintMarksSettings() { return printMarksSettings; }
 
     public BdocObject findObject(String objectId) {
         return objects.stream()

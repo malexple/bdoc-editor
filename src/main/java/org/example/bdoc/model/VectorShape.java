@@ -8,13 +8,14 @@ import java.util.Set;
 public final class VectorShape extends BdocObject {
 
     private final String shapeType;
-
-    // Этап 1.7 (Вопрос 5): raw HEX-цвета для обратной совместимости
-    // + опциональные ссылки на Swatch, приоритетные при резолве через ColorResolver.
     private final String fillColor;
     private final String strokeColor;
     private final String fillColorSwatchRef;
     private final String strokeColorSwatchRef;
+
+    // Этап 1.8 (Вопрос 5): overprint-флаги, дефолт false.
+    private final boolean fillOverprint;
+    private final boolean strokeOverprint;
 
     public VectorShape(String id, String layerRef, Geometry geometry, String shapeType) {
         super(id, layerRef, geometry);
@@ -23,6 +24,8 @@ public final class VectorShape extends BdocObject {
         this.strokeColor = null;
         this.fillColorSwatchRef = null;
         this.strokeColorSwatchRef = null;
+        this.fillOverprint = false;
+        this.strokeOverprint = false;
     }
 
     public VectorShape(String id, String layerRef, Geometry geometry, String shapeType,
@@ -33,14 +36,10 @@ public final class VectorShape extends BdocObject {
         this.strokeColor = null;
         this.fillColorSwatchRef = null;
         this.strokeColorSwatchRef = null;
+        this.fillOverprint = false;
+        this.strokeOverprint = false;
     }
 
-    /**
-     * Совместимость с Этапом 1.6: старая сигнатура из 15 параметров
-     * (без цвета), которой пользуются существующие вызовы в SampleDocuments
-     * (maskStar, maskedShape, rotatedRectDemo, polygonDemo, letterODemo).
-     * Делегирует в новый @JsonCreator-конструктор с цветами = null.
-     */
     public VectorShape(
             String id, String layerRef, Geometry geometry, String shapeType,
             String masterSourceId, Set<String> overriddenProperties,
@@ -49,13 +48,13 @@ public final class VectorShape extends BdocObject {
             TextWrapModel textWrap, PathModel pathData, TransformModel transform) {
         this(id, layerRef, geometry, shapeType, masterSourceId, overriddenProperties,
                 visible, clipGeometry, maskRef, mask, artifact, artifactType,
-                textWrap, pathData, transform, null, null, null, null);
+                textWrap, pathData, transform, null, null, null, null, false, false);
     }
 
     /**
-     * Точка входа для Jackson (JSON/CBOR): сигнатура Этапа 1.6 плюс 4 поля
-     * цвета в конце. Старые файлы без этих полей читаются нормально —
-     * Jackson подставит null (FAIL_ON_UNKNOWN_PROPERTIES отключён).
+     * Точка входа для Jackson: сигнатура Этапа 1.6 + 4 цветовых поля (1.7)
+     * + 2 overprint-флага (1.8). Старые файлы без этих полей читаются
+     * нормально — Jackson подставит null/false.
      */
     @JsonCreator
     public VectorShape(
@@ -77,7 +76,9 @@ public final class VectorShape extends BdocObject {
             @JsonProperty("fillColor") String fillColor,
             @JsonProperty("strokeColor") String strokeColor,
             @JsonProperty("fillColorSwatchRef") String fillColorSwatchRef,
-            @JsonProperty("strokeColorSwatchRef") String strokeColorSwatchRef) {
+            @JsonProperty("strokeColorSwatchRef") String strokeColorSwatchRef,
+            @JsonProperty("fillOverprint") Boolean fillOverprint,
+            @JsonProperty("strokeOverprint") Boolean strokeOverprint) {
         super(id, layerRef, geometry, masterSourceId, overriddenProperties, visible,
                 clipGeometry, maskRef, mask, artifact, artifactType, textWrap, pathData, transform);
         this.shapeType = shapeType;
@@ -85,13 +86,10 @@ public final class VectorShape extends BdocObject {
         this.strokeColor = strokeColor;
         this.fillColorSwatchRef = fillColorSwatchRef;
         this.strokeColorSwatchRef = strokeColorSwatchRef;
+        this.fillOverprint = fillOverprint != null ? fillOverprint : false;
+        this.strokeOverprint = strokeOverprint != null ? strokeOverprint : false;
     }
 
-    /**
-     * Полный конструктор Этапа 1.6 (objectStyleRef/opacity/anchoredSettings),
-     * используется в SampleDocuments (styledCardInherited, styledCardOverride,
-     * anchoredIcon). Цвет здесь не программируется этой сигнатурой.
-     */
     public VectorShape(
             String id, String layerRef, Geometry geometry, String shapeType,
             String masterSourceId, Set<String> overriddenProperties,
@@ -107,9 +105,11 @@ public final class VectorShape extends BdocObject {
         this.strokeColor = null;
         this.fillColorSwatchRef = null;
         this.strokeColorSwatchRef = null;
+        this.fillOverprint = false;
+        this.strokeOverprint = false;
     }
 
-    /** Удобный конструктор для SampleDocuments: минимум параметров + цвет. */
+    /** Удобный конструктор для SampleDocuments: минимум параметров + цвет (Этап 1.7). */
     public VectorShape(String id, String layerRef, Geometry geometry, String shapeType,
                        String fillColor, String strokeColor,
                        String fillColorSwatchRef, String strokeColorSwatchRef) {
@@ -119,6 +119,23 @@ public final class VectorShape extends BdocObject {
         this.strokeColor = strokeColor;
         this.fillColorSwatchRef = fillColorSwatchRef;
         this.strokeColorSwatchRef = strokeColorSwatchRef;
+        this.fillOverprint = false;
+        this.strokeOverprint = false;
+    }
+
+    /** Удобный конструктор для SampleDocuments с overprint-флагами (Этап 1.8). */
+    public VectorShape(String id, String layerRef, Geometry geometry, String shapeType,
+                       String fillColor, String strokeColor,
+                       String fillColorSwatchRef, String strokeColorSwatchRef,
+                       boolean fillOverprint, boolean strokeOverprint) {
+        super(id, layerRef, geometry);
+        this.shapeType = shapeType;
+        this.fillColor = fillColor;
+        this.strokeColor = strokeColor;
+        this.fillColorSwatchRef = fillColorSwatchRef;
+        this.strokeColorSwatchRef = strokeColorSwatchRef;
+        this.fillOverprint = fillOverprint;
+        this.strokeOverprint = strokeOverprint;
     }
 
     public String getShapeType() { return shapeType; }
@@ -126,6 +143,8 @@ public final class VectorShape extends BdocObject {
     public String getStrokeColor() { return strokeColor; }
     public String getFillColorSwatchRef() { return fillColorSwatchRef; }
     public String getStrokeColorSwatchRef() { return strokeColorSwatchRef; }
+    public boolean isFillOverprint() { return fillOverprint; }
+    public boolean isStrokeOverprint() { return strokeOverprint; }
 
     @Override
     public String getType() { return "VectorShape"; }

@@ -15,6 +15,8 @@ import javafx.scene.paint.Color;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.example.bdoc.io.BdocContainerSerializer;
+import org.example.bdoc.io.BdocIntegrityValidator;
+import org.example.bdoc.io.BdocValidationException;
 import org.example.bdoc.io.DocumentHandle;
 import org.example.bdoc.model.*;
 import org.example.bdoc.render.PageRenderer;
@@ -62,6 +64,8 @@ public class BdocEditorApp extends Application {
 
     private PathModel dragStartPathData = null;
     private Geometry dragStartPathGeometry = null;
+
+    private final BdocIntegrityValidator integrityValidator = new BdocIntegrityValidator();
 
     private static final class TreeNodeData {
         final NodeKind kind;
@@ -508,6 +512,14 @@ public class BdocEditorApp extends Application {
             showError("Save error", "No document is currently open.");
             return;
         }
+
+        try {
+            integrityValidator.validate(document);
+        } catch (BdocValidationException validationEx) {
+            showValidationErrors("Cannot save document", validationEx);
+            return;
+        }
+
         FileChooser fc = new FileChooser();
         fc.setTitle("Save BDoc file as");
         fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("BDoc files", "*.bdoc"));
@@ -537,6 +549,15 @@ public class BdocEditorApp extends Application {
             DocumentHandle previous = document;
 
             DocumentHandle opened = serializer.open(file);
+
+            try {
+                integrityValidator.validate(opened);
+            } catch (BdocValidationException validationEx) {
+                opened.close();
+                showValidationErrors("Cannot open document", validationEx);
+                return;
+            }
+
             document = opened;
             currentFile = file;
             currentPageIndex = 1;
@@ -570,12 +591,6 @@ public class BdocEditorApp extends Application {
         }
     }
 
-    /**
-     * Полностью перестраивает дерево: Document → Page → Layer → Objects.
-     * Мастер-объекты без override показаны в потоке объектов слоя с иконкой 🔒
-     * и полупрозрачным стилем — они физически находятся в том же слое,
-     * куда их поместил MasterPage.
-     */
     private void refreshTree() {
         TreeItem<TreeNodeData> root = new TreeItem<>(TreeNodeData.document());
         root.setExpanded(true);
@@ -888,14 +903,6 @@ public class BdocEditorApp extends Application {
         }
     }
 
-    /**
-     * Переводит координаты клика мыши (screen/page space) в локальную систему
-     * координат объекта, отменяя его Transform (translate → rotate → scale
-     * вокруг центра bounding box). Без этого хит-тест хендлов и AABB объекта
-     * не совпадает с тем, что реально нарисовано повёрнутым/масштабированным
-     * на canvas — PageRenderer.applyTransform() применяет прямое преобразование,
-     * а этот метод — его точную инверсию.
-     */
     private double[] toLocalPoint(double screenX, double screenY, BdocObject object) {
         TransformModel t = object.getTransform();
         if (t == null || t.isIdentity()) {
@@ -923,15 +930,6 @@ public class BdocEditorApp extends Application {
         return new double[]{rx + centerX, ry + centerY};
     }
 
-    /**
-     * Пересчитывает точки PathModel (полигон/bezier) пропорционально
-     * изменению bounding box: старая точка проецируется как доля внутри
-     * oldBox, затем эта же доля применяется к newBox. Работает и для чистого
-     * переноса (move), и для resize — при move oldBox/newBox имеют
-     * одинаковый размер, но разные x/y, и формула превращается в обычный
-     * сдвиг. Сознательно НЕ учитывает Transform.rotationDegrees — сочетание
-     * "повёрнутый объект произвольной формы + resize" отложено на Этап 2.
-     */
     private PathModel rescalePathData(PathModel original, Geometry oldBox, Geometry newBox) {
         double oldW = oldBox.getWidth();
         double oldH = oldBox.getHeight();
@@ -957,13 +955,7 @@ public class BdocEditorApp extends Application {
         return new PathModel(original.getContourType(), rescaled, original.getFillRule());
     }
 
-    /**
-     * PathModel иммутабелен, поэтому единственный способ "подвинуть" контур —
-     * пересобрать весь VectorShape с новым PathModel и заменить его в
-     * page.getObjects() по индексу. На Этапе 1.4 поддержана только VectorShape —
-     * TextFrame/ImageFrame с pathData (маски) пока не двигаются вместе с
-     * Geometry, это расширение оставлено на будущий шаг.
-     */
+
     private BdocObject replacePathData(PageModel page, BdocObject object, PathModel newPathData) {
         if (!(object instanceof VectorShape vs)) {
             return object;
@@ -981,5 +973,22 @@ public class BdocEditorApp extends Application {
             }
         }
         return updated;
+    }
+
+    private void showValidationErrors(String title, BdocValidationException validationEx) {
+        StringBuilder sb = new StringBuilder();
+        for (String error : validationEx.getErrors()) {
+            sb.append("• ").append(error).append("\n");
+        }
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle(title);
+        alert.setHeaderText("Preflight validation failed (" + validationEx.getErrors().size() + " issue(s))");
+        TextArea textArea = new TextArea(sb.toString());
+        textArea.setEditable(false);
+        textArea.setWrapText(true);
+        textArea.setPrefWidth(500);
+        textArea.setPrefHeight(300);
+        alert.getDialogPane().setContent(textArea);
+        alert.showAndWait();
     }
 }

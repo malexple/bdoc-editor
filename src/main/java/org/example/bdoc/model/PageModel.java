@@ -17,6 +17,12 @@ public final class PageModel {
     private final List<BdocObject> objects;
     private final List<ReadingSegment> readingOrder;
 
+    // Этап 1.8: prepress-геометрия (Вопросы 1-4), nullable для каскада
+    // Page -> MasterPage -> Manifest.
+    private final Double bleedMargin;
+    private final Double safetyMargin;
+    private final PrintMarksSettings printMarksSettings;
+
     @JsonCreator
     public PageModel(
             @JsonProperty("id") String id,
@@ -27,7 +33,10 @@ public final class PageModel {
             @JsonProperty("templateRef") String templateRef,
             @JsonProperty("layers") List<LayerModel> layers,
             @JsonProperty("objects") List<BdocObject> objects,
-            @JsonProperty("readingOrder") List<ReadingSegment> readingOrder) {
+            @JsonProperty("readingOrder") List<ReadingSegment> readingOrder,
+            @JsonProperty("bleedMargin") Double bleedMargin,
+            @JsonProperty("safetyMargin") Double safetyMargin,
+            @JsonProperty("printMarksSettings") PrintMarksSettings printMarksSettings) {
         this.id = id;
         this.index = index;
         this.width = width;
@@ -37,12 +46,21 @@ public final class PageModel {
         this.layers = layers != null ? layers : List.of();
         this.objects = objects != null ? objects : List.of();
         this.readingOrder = readingOrder != null ? readingOrder : List.of();
+        this.bleedMargin = bleedMargin;
+        this.safetyMargin = safetyMargin;
+        this.printMarksSettings = printMarksSettings;
+    }
+
+    /** Совместимость с Этапом 1.6: полный конструктор без prepress-полей. */
+    public PageModel(String id, int index, double width, double height, String unit, String templateRef,
+                     List<LayerModel> layers, List<BdocObject> objects, List<ReadingSegment> readingOrder) {
+        this(id, index, width, height, unit, templateRef, layers, objects, readingOrder, null, null, null);
     }
 
     /** Удобный конструктор без readingOrder — для случаев, когда порядок чтения ещё не размечен. */
     public PageModel(String id, int index, double width, double height, String unit, String templateRef,
                      List<LayerModel> layers, List<BdocObject> objects) {
-        this(id, index, width, height, unit, templateRef, layers, objects, List.of());
+        this(id, index, width, height, unit, templateRef, layers, objects, List.of(), null, null, null);
     }
 
     public String getId() { return id; }
@@ -54,4 +72,7 @@ public final class PageModel {
     public List<LayerModel> getLayers() { return layers; }
     public List<BdocObject> getObjects() { return objects; }
     public List<ReadingSegment> getReadingOrder() { return readingOrder; }
+    public Double getBleedMargin() { return bleedMargin; }
+    public Double getSafetyMargin() { return safetyMargin; }
+    public PrintMarksSettings getPrintMarksSettings() { return printMarksSettings; }
 }
