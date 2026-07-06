@@ -319,6 +319,7 @@ public final class BdocIntegrityValidator {
             validateObjectStyleRef(object, document.getStyles(), pageLabel, errors);
             validateAnchoredSettings(object, storyIds, document, pageLabel, errors);
             validatePrepressGeometry(object, page, masterPage, document, pageLabel, errors);
+            validateCustomDataNamespacing(object, pageLabel, org.example.bdoc.plugin.PluginContext.getInstance(), errors);
         }
 
         Set<String> availableObjectIds = new HashSet<>(objectIds);
@@ -585,6 +586,17 @@ public final class BdocIntegrityValidator {
                             + "' crosses the safetyMargin boundary (safetyMargin=" + safety
                             + "pt) — text on a TEXT layer must stay fully within the safe area to avoid trimming damage");
                 }
+            }
+        }
+    }
+
+    private void validateCustomDataNamespacing(BdocObject object, String pageLabel,
+                                               org.example.bdoc.plugin.PluginContext pluginContext,
+                                               List<String> errors) {
+        for (String key : object.getCustomData().keySet()) {
+            if (!pluginContext.isKnownNamespacedKey(key)) {
+                errors.add(pageLabel + ": object '" + object.getId() + "' has customData key '" + key
+                        + "' which is not namespaced under any registered plugin (expected format: <plugin.namespace>.<key>)");
             }
         }
     }

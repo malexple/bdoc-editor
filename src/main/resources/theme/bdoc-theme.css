@@ -1,0 +1,232 @@
+/* ============================================================
+ * Единая тема BDoc Editor (аналог Darcula/InDesign Dark UI).
+ * Все компоненты ядра и плагинов ОБЯЗАНЫ использовать только
+ * эти семантические классы — хардкод -fx-background-color в Java
+ * запрещён архитектурным правилом (Этап 2, Пункт 8).
+ * ============================================================ */
+
+.root {
+    -fx-base-bg: #2B2D30;
+    -fx-panel-bg: #313335;
+    -fx-panel-bg-darker: #26282A;
+    -fx-pasteboard-bg: #1E1F22;
+    -fx-border-subtle: #43454A;
+    -fx-text-primary: #D4D4D4;
+    -fx-text-secondary: #9AA0A6;
+    -fx-accent: #4C8DFF;
+    -fx-accent-hover: #6BA1FF;
+    -fx-danger: #E5484D;
+    -fx-warning: #D9A83C;
+
+    -fx-background-color: -fx-base-bg;
+    -fx-font-family: "Segoe UI", "Inter", sans-serif;
+    -fx-text-fill: -fx-text-primary;
+}
+
+/* ---------- Toolbar (аналог верхней панели инструментов InDesign) ---------- */
+
+.tool-bar {
+    -fx-background-color: -fx-panel-bg-darker;
+    -fx-padding: 4 8 4 8;
+    -fx-spacing: 4;
+    -fx-border-color: transparent transparent -fx-border-subtle transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.tool-bar .label {
+    -fx-text-fill: -fx-text-secondary;
+    -fx-font-size: 11px;
+}
+
+.bdoc-tool-toggle {
+    -fx-background-color: transparent;
+    -fx-background-radius: 4;
+    -fx-text-fill: -fx-text-primary;
+    -fx-padding: 6 10 6 10;
+    -fx-font-size: 12px;
+    -fx-cursor: hand;
+}
+
+.bdoc-tool-toggle:hover {
+    -fx-background-color: derive(-fx-panel-bg, 15%);
+}
+
+.bdoc-tool-toggle:selected {
+    -fx-background-color: -fx-accent;
+    -fx-text-fill: white;
+    -fx-background-radius: 4;
+}
+
+.bdoc-toolbar-button {
+    -fx-background-color: derive(-fx-panel-bg, 8%);
+    -fx-background-radius: 4;
+    -fx-text-fill: -fx-text-primary;
+    -fx-padding: 6 12 6 12;
+    -fx-font-size: 12px;
+    -fx-border-color: -fx-border-subtle;
+    -fx-border-radius: 4;
+    -fx-border-width: 1;
+}
+
+.bdoc-toolbar-button:hover {
+    -fx-background-color: derive(-fx-panel-bg, 20%);
+    -fx-border-color: -fx-accent;
+}
+
+.bdoc-toolbar-button:armed {
+    -fx-background-color: derive(-fx-accent, -20%);
+}
+
+/* ---------- Pasteboard / рабочая область холста ---------- */
+
+.bdoc-canvas-pane {
+    -fx-background-color: -fx-pasteboard-bg;
+}
+
+/* Сам Canvas остаётся белым программно — это цвет "бумаги", а не UI-темы */
+
+/* ---------- Дерево документа (левая панель) ---------- */
+
+.tree-view {
+    -fx-background-color: -fx-panel-bg;
+    -fx-control-inner-background: -fx-panel-bg;
+    -fx-text-fill: -fx-text-primary;
+    -fx-border-color: transparent -fx-border-subtle transparent transparent;
+    -fx-border-width: 0 1 0 0;
+}
+
+.tree-cell {
+    -fx-background-color: -fx-panel-bg;
+    -fx-text-fill: -fx-text-primary;
+    -fx-padding: 3 4 3 4;
+}
+
+.tree-cell:filled:selected {
+    -fx-background-color: derive(-fx-accent, 40%);
+    -fx-background-insets: 0;
+}
+
+.tree-cell:filled:hover {
+    -fx-background-color: derive(-fx-panel-bg, 12%);
+}
+
+.tree-cell .check-box .box {
+    -fx-background-color: -fx-panel-bg-darker;
+    -fx-border-color: -fx-border-subtle;
+}
+
+/* ---------- Правая панель Properties & Layers ---------- */
+
+.bdoc-properties-pane {
+    -fx-background-color: -fx-panel-bg;
+    -fx-border-color: transparent transparent transparent -fx-border-subtle;
+    -fx-border-width: 0 0 0 1;
+}
+
+.bdoc-section-title {
+    -fx-text-fill: -fx-text-primary;
+    -fx-font-weight: bold;
+    -fx-font-size: 13px;
+    -fx-padding: 0 0 8 0;
+}
+
+.bdoc-field-label {
+    -fx-text-fill: -fx-text-secondary;
+    -fx-font-size: 11px;
+}
+
+.bdoc-mono-value {
+    -fx-text-fill: -fx-text-primary;
+    -fx-font-family: "Consolas", "JetBrains Mono", monospace;
+    -fx-font-size: 11px;
+}
+
+.bdoc-warning-label {
+    -fx-text-fill: -fx-warning;
+    -fx-font-size: 11px;
+}
+
+.separator *.line {
+    -fx-border-color: -fx-border-subtle;
+    -fx-border-width: 1 0 0 0;
+}
+
+/* ---------- Стандартные контролы (Slider, CheckBox, TextArea) ---------- */
+
+.check-box {
+    -fx-text-fill: -fx-text-primary;
+}
+
+.check-box .box {
+    -fx-background-color: -fx-panel-bg-darker;
+    -fx-border-color: -fx-border-subtle;
+    -fx-border-radius: 2;
+}
+
+.check-box:selected .mark {
+    -fx-background-color: -fx-accent;
+}
+
+.slider .track {
+    -fx-background-color: -fx-panel-bg-darker;
+}
+
+.slider .thumb {
+    -fx-background-color: -fx-accent;
+}
+
+.text-area, .text-field {
+    -fx-background-color: -fx-panel-bg-darker;
+    -fx-text-fill: -fx-text-primary;
+    -fx-highlight-fill: -fx-accent;
+    -fx-highlight-text-fill: white;
+    -fx-border-color: -fx-border-subtle;
+    -fx-border-radius: 3;
+}
+
+.text-area .content {
+    -fx-background-color: -fx-panel-bg-darker;
+}
+
+/* ---------- Статус-бар ---------- */
+
+.bdoc-status-bar {
+    -fx-background-color: -fx-panel-bg-darker;
+    -fx-text-fill: -fx-text-secondary;
+    -fx-font-size: 11px;
+    -fx-padding: 4 10 4 10;
+    -fx-border-color: -fx-border-subtle transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+}
+
+/* ---------- SplitPane divider ---------- */
+
+.split-pane {
+    -fx-background-color: -fx-base-bg;
+}
+
+.split-pane-divider {
+    -fx-background-color: -fx-border-subtle;
+    -fx-padding: 0 1 0 1;
+}
+
+/* ---------- Общие кнопки диалогов (Alert, FileChooser не стилизуются — системные) ---------- */
+
+.button {
+    -fx-background-color: derive(-fx-panel-bg, 10%);
+    -fx-text-fill: -fx-text-primary;
+    -fx-background-radius: 4;
+    -fx-border-color: -fx-border-subtle;
+    -fx-border-radius: 4;
+}
+
+.button:hover {
+    -fx-background-color: derive(-fx-panel-bg, 20%);
+    -fx-border-color: -fx-accent;
+}
+
+.button:default {
+    -fx-background-color: -fx-accent;
+    -fx-text-fill: white;
+    -fx-border-color: -fx-accent;
+}

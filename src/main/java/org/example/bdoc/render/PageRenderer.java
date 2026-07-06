@@ -14,11 +14,20 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.*;
 
+/**
+ * Отвечает ИСКЛЮЧИТЕЛЬНО за отрисовку "чистого" документа: объекты, стили,
+ * мастер-страницы, prepress-guides. Рамка выделения и resize-хендлы больше
+ * не рисуются здесь (см. Этап 2, вопрос 4) — они переехали в
+ * SelectionToolStrategy.renderOverlay, который вызывается ядром ПОСЛЕ
+ * render() отдельным проходом по тому же GraphicsContext. Благодаря этому
+ * PageRenderer можно использовать и для headless-экспорта/печати, где
+ * никакого UI-выделения не существует по определению.
+ */
 public class PageRenderer {
 
     private final Map<String, Image> imageCache = new HashMap<>();
 
-    public void render(GraphicsContext gc, DocumentHandle document, PageModel page, BdocObject selectedObject) throws IOException {
+    public void render(GraphicsContext gc, DocumentHandle document, PageModel page) throws IOException {
         gc.setFill(Color.WHITE);
         gc.fillRect(0, 0, page.getWidth(), page.getHeight());
 
@@ -38,7 +47,7 @@ public class PageRenderer {
                 })
                 .sorted(Comparator.comparingInt(o -> page.getLayers().indexOf(layers.get(o.getLayerRef()))))
                 .forEach(object -> renderObject(gc, object, document, layers.get(object.getLayerRef()),
-                        styleResolver, selectedObject, isRawMasterObject(object, masterPage)));
+                        styleResolver, isRawMasterObject(object, masterPage)));
 
         renderPrepressGuides(gc, document, page, masterPage);
     }
@@ -114,8 +123,7 @@ public class PageRenderer {
     }
 
     private void renderObject(GraphicsContext gc, BdocObject object, DocumentHandle document,
-                              LayerModel layer, StyleResolver styleResolver, BdocObject selectedObject,
-                              boolean isRawMaster) {
+                              LayerModel layer, StyleResolver styleResolver, boolean isRawMaster) {
         CharacterStyleResolver characterStyleResolver = new CharacterStyleResolver(document.getStyles());
 
         double effectiveOpacity = ObjectStyleResolver.resolveOpacity(object, document.getStyles());
@@ -140,41 +148,11 @@ public class PageRenderer {
             throw new RuntimeException("Failed to render object: " + object.getId(), e);
         }
 
-        // Выделение и артефактные рамки рисуются в ТОЙ ЖЕ трансформированной
-        // системе координат — благодаря этому синие хендлы и пунктир артефакта
-        // визуально поворачиваются вместе с объектом. Обратный пересчёт клика
-        // мыши в локальные координаты повёрнутого объекта — задача Этапа 2.
-        if (object == selectedObject) {
-            Geometry g = object.getGeometry();
-            if (object.getType().equals("VectorShape") || object.getType().equals("ImageFrame")) {
-                gc.setStroke(Color.web("#2563EB"));
-                gc.setLineWidth(2.0);
-                gc.strokeRect(g.getX() - 1, g.getY() - 1, g.getWidth() + 2, g.getHeight() + 2);
-
-                gc.setFill(Color.WHITE);
-                gc.setStroke(Color.web("#2563EB"));
-                gc.setLineWidth(1.0);
-                double size = 6.0;
-                gc.fillRect(g.getX() - size / 2, g.getY() - size / 2, size, size);
-                gc.strokeRect(g.getX() - size / 2, g.getY() - size / 2, size, size);
-                gc.fillRect(g.getX() + g.getWidth() - size / 2, g.getY() - size / 2, size, size);
-                gc.strokeRect(g.getX() + g.getWidth() - size / 2, g.getY() - size / 2, size, size);
-                gc.fillRect(g.getX() - size / 2, g.getY() + g.getHeight() - size / 2, size, size);
-                gc.strokeRect(g.getX() - size / 2, g.getY() + g.getHeight() - size / 2, size, size);
-                gc.fillRect(g.getX() + g.getWidth() - size / 2, g.getY() + g.getHeight() - size / 2, size, size);
-                gc.strokeRect(g.getX() + g.getWidth() - size / 2, g.getY() + g.getHeight() - size / 2, size, size);
-            } else if (object instanceof TextFrame) {
-                gc.setStroke(Color.web("#10B981"));
-                gc.setLineWidth(2.0);
-                gc.strokeRect(g.getX() - 1, g.getY() - 1, g.getWidth() + 2, g.getHeight() + 2);
-            } else if (object instanceof Group) {
-                gc.setStroke(Color.web("#7C3AED"));
-                gc.setLineWidth(2.0);
-                gc.setLineDashes(6.0, 3.0);
-                gc.strokeRect(g.getX() - 2, g.getY() - 2, g.getWidth() + 4, g.getHeight() + 4);
-                gc.setLineDashes(null);
-            }
-        } else if (object.isArtifact()) {
+        // Служебные page-level индикаторы (не relevant к активному инструменту):
+        // артефакты помечаются красным пунктиром, "сырые" объекты мастера — серым.
+        // Это состояние документа/страницы, а не эфемерный UI-стейт инструмента,
+        // поэтому оно осталось в PageRenderer.
+        if (object.isArtifact()) {
             Geometry g = object.getGeometry();
             gc.setStroke(Color.web("#DC2626"));
             gc.setLineWidth(1.0);
@@ -215,10 +193,6 @@ public class PageRenderer {
         gc.scale(t.getScaleX(), t.getScaleY());
         gc.translate(-centerX, -centerY);
         gc.translate(t.getTranslateX(), t.getTranslateY());
-    }
-
-    private boolean isFromMasterCandidate(BdocObject object) {
-        return false; // placeholder до реализации в BdocEditorApp
     }
 
     private void renderShape(GraphicsContext gc, VectorShape shape, StylesCatalog styles) {

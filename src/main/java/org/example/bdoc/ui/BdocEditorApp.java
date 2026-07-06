@@ -6,12 +6,12 @@ import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
+import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import javafx.scene.paint.Color;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.example.bdoc.io.BdocContainerSerializer;
@@ -19,7 +19,16 @@ import org.example.bdoc.io.BdocIntegrityValidator;
 import org.example.bdoc.io.BdocValidationException;
 import org.example.bdoc.io.DocumentHandle;
 import org.example.bdoc.model.*;
+import org.example.bdoc.plugin.PluginContext;
+import org.example.bdoc.plugin.PluginDescriptor;
 import org.example.bdoc.render.PageRenderer;
+import org.example.bdoc.ui.properties.DefaultGeometryPropertiesPanelFactory;
+import org.example.bdoc.ui.properties.PropertiesPanelFactory;
+import org.example.bdoc.ui.properties.TextEditorPropertiesPanelFactory;
+import org.example.bdoc.ui.task.TaskQueue;
+import org.example.bdoc.ui.tool.DtpToolStrategy;
+import org.example.bdoc.ui.tool.SelectionToolStrategy;
+import org.example.bdoc.ui.tool.TextToolStrategy;
 
 import java.io.File;
 import java.io.IOException;
@@ -27,11 +36,20 @@ import java.nio.file.Files;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 
-public class BdocEditorApp extends Application {
+/**
+ * Ядро редактора (аналог IdeFrame в IntelliJ Platform). Не содержит знаний
+ * о конкретных инструментах — только диспетчеризует события мыши активной
+ * DtpToolStrategy и собирает правую панель через зарегистрированные
+ * PropertiesPanelFactory. Весь ephemeral-стейт Drag/Resize живёт внутри
+ * SelectionToolStrategy, а не здесь (см. обсуждение Этапа 2, пункт 2).
+ */
+public class BdocEditorApp extends Application implements EditorContext {
 
     private final BdocContainerSerializer serializer = new BdocContainerSerializer();
     private final PageRenderer pageRenderer = new PageRenderer();
+    private final BdocIntegrityValidator integrityValidator = new BdocIntegrityValidator();
 
     private DocumentHandle document;
     private File currentFile;
@@ -40,32 +58,16 @@ public class BdocEditorApp extends Application {
     private Canvas canvas;
     private TreeView<TreeNodeData> documentTree;
     private Label statusLabel;
-
-    private DtpTool currentTool = DtpTool.SELECTION;
-    private BdocObject selectedObject = null;
-    private double dragStartX = 0;
-    private double dragStartY = 0;
-    private double objectInitialX = 0;
-    private double objectInitialY = 0;
-
     private VBox propertiesContainer;
-    private Slider opacitySlider;
-    private CheckBox visibleCheckBox;
-    private TextArea storyTextArea;
 
-    private boolean isResizing = false;
-    private int resizeHandleIndex = -1;
-    private double initialWidth = 0;
-    private double initialHeight = 0;
-    private final double HANDLE_SIZE = 6.0;
+    private String currentToolId = "SELECTION";
+    private BdocObject selectedObject = null;
+
+    private TaskQueue taskQueue;
+    private Stage primaryStage;
 
     /** Узел дерева: либо страница, либо слой, либо объект. */
     private enum NodeKind { DOCUMENT, PAGE, LAYER, OBJECT }
-
-    private PathModel dragStartPathData = null;
-    private Geometry dragStartPathGeometry = null;
-
-    private final BdocIntegrityValidator integrityValidator = new BdocIntegrityValidator();
 
     private static final class TreeNodeData {
         final NodeKind kind;
@@ -98,6 +100,11 @@ public class BdocEditorApp extends Application {
 
     @Override
     public void start(Stage stage) {
+        this.primaryStage = stage;
+        this.taskQueue = new TaskQueue(stage);
+
+        registerBuiltinPlugins();
+
         documentTree = new TreeView<>();
         documentTree.setPrefWidth(260);
         documentTree.setCellFactory(tv -> new TreeNodeCell());
@@ -109,13 +116,13 @@ public class BdocEditorApp extends Application {
         canvas = new Canvas(595, 842);
         StackPane canvasPane = new StackPane(canvas);
         canvasPane.setPadding(new Insets(24));
-        canvasPane.setStyle("-fx-background-color: #CBD5E1;");
+        canvasPane.getStyleClass().add("bdoc-canvas-pane");
 
         BorderPane propertiesPane = new BorderPane();
         propertiesPane.setPadding(new Insets(12));
         propertiesPane.setPrefWidth(240);
         Label propTitle = new Label("Properties & Layers");
-        propTitle.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+        propTitle.getStyleClass().add("bdoc-section-title");
         propertiesPane.setTop(propTitle);
 
         propertiesContainer = new VBox(10);
@@ -126,15 +133,7 @@ public class BdocEditorApp extends Application {
         splitPane.setDividerPositions(0.22, 0.76);
         statusLabel = new Label("No document loaded");
 
-        ToggleGroup toolGroup = new ToggleGroup();
-        ToggleButton selectToolBtn = new ToggleButton("🏹 Select");
-        selectToolBtn.setToggleGroup(toolGroup);
-        selectToolBtn.setSelected(true);
-        selectToolBtn.setOnAction(e -> currentTool = DtpTool.SELECTION);
-
-        ToggleButton textToolBtn = new ToggleButton("📝 Text");
-        textToolBtn.setToggleGroup(toolGroup);
-        textToolBtn.setOnAction(e -> currentTool = DtpTool.TEXT);
+        ToolBar toolBar = buildDynamicToolBar();
 
         Button openBtn = new Button("Open");
         openBtn.setOnAction(e -> onOpen(stage));
@@ -142,212 +141,225 @@ public class BdocEditorApp extends Application {
         saveAsBtn.setOnAction(e -> onSaveAs(stage));
         Button newSampleBtn = new Button("New Sample");
         newSampleBtn.setOnAction(e -> onNewSample(stage));
+        toolBar.getItems().addAll(new Separator(), newSampleBtn, openBtn, saveAsBtn);
 
-        ToolBar toolBar = new ToolBar(
-                new Label("BDoc Editor v0.1"),
-                new Separator(),
-                selectToolBtn, textToolBtn,
-                new Separator(),
-                newSampleBtn, openBtn, saveAsBtn
-        );
-
-        canvas.setOnMousePressed(e -> {
-            if (document == null) return;
-            try {
-                PageModel page = document.loadPage(currentPageIndex);
-                MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
-
-                if (currentTool == DtpTool.SELECTION && selectedObject != null) {
-                    Geometry g = selectedObject.getGeometry();
-                    double[] local = toLocalPoint(e.getX(), e.getY(), selectedObject);
-                    double x = local[0];
-                    double y = local[1];
-
-                    double[][] handles = {
-                            {g.getX(), g.getY()},
-                            {g.getX() + g.getWidth(), g.getY()},
-                            {g.getX(), g.getY() + g.getHeight()},
-                            {g.getX() + g.getWidth(), g.getY() + g.getHeight()}
-                    };
-
-                    for (int i = 0; i < handles.length; i++) {
-                        if (x >= handles[i][0] - HANDLE_SIZE && x <= handles[i][0] + HANDLE_SIZE &&
-                                y >= handles[i][1] - HANDLE_SIZE && y <= handles[i][1] + HANDLE_SIZE) {
-
-                            selectedObject = materializeOverrideIfNeeded(page, masterPage, selectedObject);
-
-                            isResizing = true;
-                            resizeHandleIndex = i;
-                            Geometry gg = selectedObject.getGeometry();
-                            dragStartX = x;
-                            dragStartY = y;
-                            objectInitialX = gg.getX();
-                            objectInitialY = gg.getY();
-                            initialWidth = gg.getWidth();
-                            initialHeight = gg.getHeight();
-
-                            dragStartPathData = selectedObject.getPathData();
-                            dragStartPathGeometry = gg.copy();
-
-                            statusLabel.setText("Resizing object from corner: " + i);
-                            return;
-                        }
-                    }
-                }
-
-                isResizing = false;
-                resizeHandleIndex = -1;
-
-                List<BdocObject> effectiveObjects = pageRenderer.resolveEffectiveObjects(page, masterPage);
-                BdocObject found = null;
-                for (int i = effectiveObjects.size() - 1; i >= 0; i--) {
-                    BdocObject obj = effectiveObjects.get(i);
-                    if (!obj.isVisible() || obj.isArtifact()) continue;
-                    Geometry g = obj.getGeometry();
-                    double[] local = toLocalPoint(e.getX(), e.getY(), obj);
-                    if (local[0] >= g.getX() && local[0] <= g.getX() + g.getWidth() &&
-                            local[1] >= g.getY() && local[1] <= g.getY() + g.getHeight()) {
-                        found = obj;
-                        break;
-                    }
-                }
-
-                selectedObject = found;
-                selectTreeNodeFor(selectedObject);
-
-                if (currentTool == DtpTool.SELECTION) {
-                    if (selectedObject != null) {
-                        dragStartX = e.getX();
-                        dragStartY = e.getY();
-                        objectInitialX = selectedObject.getGeometry().getX();
-                        objectInitialY = selectedObject.getGeometry().getY();
-                        dragStartPathData = selectedObject.getPathData();
-                        dragStartPathGeometry = selectedObject.getGeometry().copy();
-                        boolean fromMaster = pageRenderer.isRawMasterObject(selectedObject, masterPage);
-                        statusLabel.setText((fromMaster ? "Selected (master-locked): " : "Selected: ") + selectedObject.getId());
-                        updatePropertiesPane(page, masterPage, selectedObject);
-                    } else {
-                        propertiesContainer.getChildren().clear();
-                    }
-                    renderCurrentPage();
-                } else if (currentTool == DtpTool.TEXT) {
-                    if (selectedObject instanceof TextFrame textFrame) {
-                        StoryModel story = document.getStory(textFrame.getStoryRef());
-                        statusLabel.setText("Editing Story: " + textFrame.getStoryRef());
-                        renderCurrentPage();
-                        updateTextEditorPane(textFrame, story);
-                    } else {
-                        propertiesContainer.getChildren().clear();
-                        renderCurrentPage();
-                    }
-                }
-            } catch (IOException ex) {
-                showError("Mouse Press Error", ex.getMessage());
-            }
-        });
-
-        canvas.setOnMouseDragged(e -> {
-            if (selectedObject == null) return;
-
-            PageModel page;
-            try {
-                page = document.loadPage(currentPageIndex);
-                MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
-
-                if (!isResizing && pageRenderer.isRawMasterObject(selectedObject, masterPage)) {
-                    selectedObject = materializeOverrideIfNeeded(page, masterPage, selectedObject);
-                    objectInitialX = selectedObject.getGeometry().getX();
-                    objectInitialY = selectedObject.getGeometry().getY();
-                }
-            } catch (IOException ex) {
-                showError("Drag Error", ex.getMessage());
-                return;
-            }
-
-            double deltaX = e.getX() - dragStartX;
-            double deltaY = e.getY() - dragStartY;
-            Geometry g = selectedObject.getGeometry();
-
-            if (isResizing) {
-                switch (resizeHandleIndex) {
-                    case 0 -> {
-                        double newWidth = initialWidth - deltaX;
-                        double newHeight = initialHeight - deltaY;
-                        if (newWidth > 10 && newHeight > 10) {
-                            g.setX(objectInitialX + deltaX);
-                            g.setY(objectInitialY + deltaY);
-                            g.setWidth(newWidth);
-                            g.setHeight(newHeight);
-                        }
-                    }
-                    case 1 -> {
-                        double newWidth = initialWidth + deltaX;
-                        double newHeight = initialHeight - deltaY;
-                        if (newWidth > 10 && newHeight > 10) {
-                            g.setY(objectInitialY + deltaY);
-                            g.setWidth(newWidth);
-                            g.setHeight(newHeight);
-                        }
-                    }
-                    case 2 -> {
-                        double newWidth = initialWidth - deltaX;
-                        double newHeight = initialHeight + deltaY;
-                        if (newWidth > 10 && newHeight > 10) {
-                            g.setX(objectInitialX + deltaX);
-                            g.setWidth(newWidth);
-                            g.setHeight(newHeight);
-                        }
-                    }
-                    case 3 -> {
-                        double newWidth = initialWidth + deltaX;
-                        double newHeight = initialHeight + deltaY;
-                        if (newWidth > 10 && newHeight > 10) {
-                            g.setWidth(newWidth);
-                            g.setHeight(newHeight);
-                        }
-                    }
-                }
-
-                if (dragStartPathData != null && !dragStartPathData.getPoints().isEmpty()
-                        && !"primitive".equals(dragStartPathData.getContourType())) {
-                    PathModel rescaled = rescalePathData(dragStartPathData, dragStartPathGeometry, g);
-                    selectedObject = replacePathData(page, selectedObject, rescaled);
-                }
-                renderCurrentPage();
-            } else if (currentTool == DtpTool.SELECTION) {
-                g.setX(objectInitialX + deltaX);
-                g.setY(objectInitialY + deltaY);
-
-                if (dragStartPathData != null && !dragStartPathData.getPoints().isEmpty()
-                        && !"primitive".equals(dragStartPathData.getContourType())) {
-                    PathModel rescaled = rescalePathData(dragStartPathData, dragStartPathGeometry, g);
-                    selectedObject = replacePathData(page, selectedObject, rescaled);
-                }
-                renderCurrentPage();
-            }
-        });
-
-        canvas.setOnMouseReleased(e -> {
-            isResizing = false;
-            resizeHandleIndex = -1;
-            dragStartPathData = null;
-            dragStartPathGeometry = null;
-        });
+        canvas.setOnMousePressed(e -> dispatchToActiveTool(strategy -> strategy.onMousePressed(e, this)));
+        canvas.setOnMouseDragged(e -> dispatchToActiveTool(strategy -> strategy.onMouseDragged(e, this)));
+        canvas.setOnMouseReleased(e -> dispatchToActiveTool(strategy -> strategy.onMouseReleased(e, this)));
 
         BorderPane root = new BorderPane();
         root.setTop(toolBar);
         root.setCenter(splitPane);
         root.setBottom(statusLabel);
-        root.setStyle("-fx-font-family: 'Segoe UI'; -fx-background-color: white;");
+        root.getStyleClass().add("root");
 
-        Scene scene = new Scene(root, 1280, 900, Color.WHITE);
+        Scene scene = new Scene(root, 1280, 900);
+        scene.getStylesheets().add(getClass().getResource("/theme/bdoc-theme.css").toExternalForm());
         stage.setTitle("BDoc Editor - Реставрация печатных изданий");
         stage.setScene(scene);
         stage.show();
         loadInitialSample(stage);
     }
 
-    /** Кастомная ячейка дерева: иконка 👁/🔒 + название, с тусклым стилем для мастер-объектов. */
+    // ================= Регистрация встроенных плагинов (ядра) =================
+
+    private void registerBuiltinPlugins() {
+        PluginContext ctx = PluginContext.getInstance();
+
+        PluginDescriptor core = new PluginDescriptor(
+                "bdoc-core", "org.example.bdoc.core", "BDoc Core", "0.1", "BDoc Team");
+        ctx.registerPlugin(core);
+
+        ctx.registerTool(new SelectionToolStrategy());
+        ctx.registerTool(new TextToolStrategy());
+
+        ctx.registerPropertiesFactory(new DefaultGeometryPropertiesPanelFactory());
+        ctx.registerPropertiesFactory(new TextEditorPropertiesPanelFactory());
+    }
+
+    private ToolBar buildDynamicToolBar() {
+        ToolBar toolBar = new ToolBar(new Label("BDoc Editor v0.1"), new Separator());
+        ToggleGroup toolGroup = new ToggleGroup();
+
+        for (DtpToolStrategy tool : PluginContext.getInstance().getRegisteredTools().values()) {
+            ToggleButton btn = new ToggleButton(tool.getLabel());
+            btn.setToggleGroup(toolGroup);
+            if (tool.getToolId().equals(currentToolId)) btn.setSelected(true);
+
+            btn.setOnAction(e -> {
+                DtpToolStrategy oldTool = PluginContext.getInstance().getTool(currentToolId);
+                if (oldTool != null) oldTool.deactivate(this);
+
+                currentToolId = tool.getToolId();
+                tool.activate(this);
+                statusLabel.setText("Active Tool: " + tool.getLabel());
+                renderCurrentPage();
+            });
+            toolBar.getItems().add(btn);
+        }
+        return toolBar;
+    }
+
+    private void dispatchToActiveTool(Consumer<DtpToolStrategy> action) {
+        if (document == null) return;
+        DtpToolStrategy strategy = PluginContext.getInstance().getTool(currentToolId);
+        if (strategy != null) {
+            try {
+                action.accept(strategy);
+            } catch (Exception ex) {
+                showError("Tool Error", ex.getMessage());
+            }
+        }
+    }
+
+    // ================= EditorContext: узкий контракт для плагинов =================
+
+    @Override
+    public DocumentHandle getDocument() { return document; }
+
+    @Override
+    public PageModel getCurrentPage() {
+        try {
+            return document.loadPage(currentPageIndex);
+        } catch (IOException ex) {
+            showError("Page load error", ex.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public MasterPage getCurrentMasterPage() {
+        PageModel page = getCurrentPage();
+        return page != null ? document.getMasterPage(page.getTemplateRef()) : null;
+    }
+
+    @Override
+    public int getCurrentPageIndex() { return currentPageIndex; }
+
+    @Override
+    public BdocObject getSelectedObject() { return selectedObject; }
+
+    @Override
+    public void setSelectedObject(BdocObject object) {
+        this.selectedObject = object;
+        rebuildPropertiesPanel(object);
+        selectTreeNodeFor(object);
+    }
+
+    @Override
+    public BdocObject materializeOverrideIfNeeded(BdocObject object) {
+        return materializeOverrideIfNeededInternal(getCurrentPage(), getCurrentMasterPage(), object);
+    }
+
+    @Override
+    public BdocObject replacePathData(BdocObject object, PathModel newPathData) {
+        if (!(object instanceof VectorShape vs)) {
+            return object;
+        }
+        VectorShape updated = new VectorShape(
+                vs.getId(), vs.getLayerRef(), vs.getGeometry(), vs.getShapeType(),
+                vs.getMasterSourceId(), vs.getOverriddenProperties(), vs.isVisible(),
+                vs.getClipGeometry(), vs.getMaskRef(), vs.isMask(), vs.isArtifact(),
+                vs.getArtifactType(), vs.getTextWrap(), newPathData, vs.getTransform()
+        );
+        PageModel page = getCurrentPage();
+        for (int i = 0; i < page.getObjects().size(); i++) {
+            if (page.getObjects().get(i).getId().equals(vs.getId())) {
+                page.getObjects().set(i, updated);
+                break;
+            }
+        }
+        return updated;
+    }
+
+    @Override
+    public void renderCurrentPage() {
+        if (document == null) return;
+        try {
+            PageModel page = document.loadPage(currentPageIndex);
+            canvas.setWidth(page.getWidth());
+            canvas.setHeight(page.getHeight());
+            GraphicsContext gc = canvas.getGraphicsContext2D();
+            pageRenderer.render(gc, document, page);
+
+            DtpToolStrategy strategy = PluginContext.getInstance().getTool(currentToolId);
+            if (strategy != null) {
+                strategy.renderOverlay(gc, this);
+            }
+        } catch (IOException ex) {
+            showError("Render error", ex.getMessage());
+        }
+    }
+
+    @Override
+    public void refreshTree() { refreshTreeInternal(); }
+
+    @Override
+    public void setStatusText(String text) { statusLabel.setText(text); }
+
+    @Override
+    public void showError(String title, String message) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle(title);
+        alert.setHeaderText(title);
+        alert.setContentText(message);
+        alert.showAndWait();
+    }
+
+    @Override
+    public double[] toLocalPoint(double screenX, double screenY, BdocObject object) {
+        TransformModel t = object.getTransform();
+        if (t == null || t.isIdentity()) {
+            return new double[]{screenX, screenY};
+        }
+        Geometry g = object.getGeometry();
+        double centerX = g.getX() + g.getWidth() / 2.0;
+        double centerY = g.getY() + g.getHeight() / 2.0;
+
+        double px = screenX - t.getTranslateX();
+        double py = screenY - t.getTranslateY();
+
+        px -= centerX;
+        py -= centerY;
+
+        double rad = Math.toRadians(-t.getRotationDegrees());
+        double cos = Math.cos(rad);
+        double sin = Math.sin(rad);
+
+        double rx = px * cos - py * sin;
+        double ry = px * sin + py * cos;
+
+        rx /= t.getScaleX();
+        ry /= t.getScaleY();
+
+        return new double[]{rx + centerX, ry + centerY};
+    }
+
+    @Override
+    public void runWriteAction(Runnable mutation) {
+        // v0.1: синхронное выполнение, без блокировки холста и без записи
+        // Undo-шага — заготовка транзакционного API (Этап 2, пункт 9.2).
+        // Полная реализация (блокировка, атомарная сериализация CBOR,
+        // история изменений) — Этап 2.10.
+        mutation.run();
+    }
+
+    @Override
+    public TaskQueue getTaskQueue() { return taskQueue; }
+
+    // ================= Правая панель через фабрики =================
+
+    private void rebuildPropertiesPanel(BdocObject object) {
+        propertiesContainer.getChildren().clear();
+        if (object == null) return;
+        PropertiesPanelFactory factory = PluginContext.getInstance().findPropertiesFactory(object);
+        if (factory != null) {
+            factory.buildPanel(propertiesContainer, object, this);
+        }
+    }
+
+    // ================= Дерево документа =================
+
     private class TreeNodeCell extends TreeCell<TreeNodeData> {
         @Override
         protected void updateItem(TreeNodeData data, boolean empty) {
@@ -392,7 +404,7 @@ public class BdocEditorApp extends Application {
                             PageModel page = document.loadPage(data.pageIndex);
                             MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
                             BdocObject target = data.isMasterLocked
-                                    ? materializeOverrideIfNeeded(page, masterPage, data.object)
+                                    ? materializeOverrideIfNeededInternal(page, masterPage, data.object)
                                     : data.object;
                             target.setVisible(eyeBox.isSelected());
                             renderCurrentPage();
@@ -406,11 +418,7 @@ public class BdocEditorApp extends Application {
                     HBox box = new HBox(eyeBox);
                     setGraphic(box);
                     setText(null);
-                    if (data.isMasterLocked) {
-                        setStyle("-fx-opacity: 0.55; -fx-font-style: italic;");
-                    } else {
-                        setStyle("");
-                    }
+                    setStyle(data.isMasterLocked ? "-fx-opacity: 0.55; -fx-font-style: italic;" : "");
                 }
             }
         }
@@ -443,19 +451,11 @@ public class BdocEditorApp extends Application {
 
         if (data.kind == NodeKind.OBJECT) {
             currentPageIndex = data.pageIndex;
-            selectedObject = data.object;
-            try {
-                PageModel page = document.loadPage(currentPageIndex);
-                MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
-                updatePropertiesPane(page, masterPage, selectedObject);
-            } catch (IOException ex) {
-                showError("Selection Error", ex.getMessage());
-            }
+            setSelectedObject(data.object);
             renderCurrentPage();
         }
     }
 
-    /** После клика по canvas подсвечивает соответствующий узел в дереве, не переоткрывая всё дерево. */
     private void selectTreeNodeFor(BdocObject object) {
         if (object == null || documentTree.getRoot() == null) return;
         findAndSelectRecursive(documentTree.getRoot(), object);
@@ -474,6 +474,44 @@ public class BdocEditorApp extends Application {
         }
         return false;
     }
+
+    private void refreshTreeInternal() {
+        TreeItem<TreeNodeData> root = new TreeItem<>(TreeNodeData.document());
+        root.setExpanded(true);
+
+        for (int pageIndex = 1; pageIndex <= document.getPageCount(); pageIndex++) {
+            TreeItem<TreeNodeData> pageItem = new TreeItem<>(TreeNodeData.page(pageIndex));
+            pageItem.setExpanded(pageIndex == currentPageIndex);
+
+            try {
+                PageModel page = document.loadPage(pageIndex);
+                MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
+                List<BdocObject> effectiveObjects = pageRenderer.resolveEffectiveObjects(page, masterPage);
+
+                for (LayerModel layer : page.getLayers()) {
+                    TreeItem<TreeNodeData> layerItem = new TreeItem<>(TreeNodeData.layer(pageIndex, layer));
+                    layerItem.setExpanded(true);
+
+                    for (BdocObject object : effectiveObjects) {
+                        if (!object.getLayerRef().equals(layer.getId())) continue;
+                        boolean isMasterLocked = pageRenderer.isRawMasterObject(object, masterPage);
+                        layerItem.getChildren().add(new TreeItem<>(
+                                TreeNodeData.object(pageIndex, layer, object, isMasterLocked)));
+                    }
+                    pageItem.getChildren().add(layerItem);
+                }
+            } catch (IOException ex) {
+                showError("Tree build error", "Failed to load page " + pageIndex + ": " + ex.getMessage());
+            }
+
+            root.getChildren().add(pageItem);
+        }
+
+        documentTree.setRoot(root);
+        documentTree.setShowRoot(true);
+    }
+
+    // ================= Файловые операции =================
 
     private void loadInitialSample(Stage stage) {
         try {
@@ -577,243 +615,6 @@ public class BdocEditorApp extends Application {
         }
     }
 
-    private void renderCurrentPage() {
-        if (document == null) {
-            return;
-        }
-        try {
-            PageModel page = document.loadPage(currentPageIndex);
-            canvas.setWidth(page.getWidth());
-            canvas.setHeight(page.getHeight());
-            pageRenderer.render(canvas.getGraphicsContext2D(), document, page, selectedObject);
-        } catch (IOException ex) {
-            showError("Render error", ex.getMessage());
-        }
-    }
-
-    private void refreshTree() {
-        TreeItem<TreeNodeData> root = new TreeItem<>(TreeNodeData.document());
-        root.setExpanded(true);
-
-        for (int pageIndex = 1; pageIndex <= document.getPageCount(); pageIndex++) {
-            TreeItem<TreeNodeData> pageItem = new TreeItem<>(TreeNodeData.page(pageIndex));
-            pageItem.setExpanded(pageIndex == currentPageIndex);
-
-            try {
-                PageModel page = document.loadPage(pageIndex);
-                MasterPage masterPage = document.getMasterPage(page.getTemplateRef());
-                List<BdocObject> effectiveObjects = pageRenderer.resolveEffectiveObjects(page, masterPage);
-
-                for (LayerModel layer : page.getLayers()) {
-                    TreeItem<TreeNodeData> layerItem = new TreeItem<>(TreeNodeData.layer(pageIndex, layer));
-                    layerItem.setExpanded(true);
-
-                    for (BdocObject object : effectiveObjects) {
-                        if (!object.getLayerRef().equals(layer.getId())) continue;
-                        boolean isMasterLocked = pageRenderer.isRawMasterObject(object, masterPage);
-                        layerItem.getChildren().add(new TreeItem<>(
-                                TreeNodeData.object(pageIndex, layer, object, isMasterLocked)));
-                    }
-                    pageItem.getChildren().add(layerItem);
-                }
-            } catch (IOException ex) {
-                showError("Tree build error", "Failed to load page " + pageIndex + ": " + ex.getMessage());
-            }
-
-            root.getChildren().add(pageItem);
-        }
-
-        documentTree.setRoot(root);
-        documentTree.setShowRoot(true);
-    }
-
-    public static void main(String[] args) {
-        launch(args);
-    }
-
-    private void showError(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle(title);
-        alert.setHeaderText(title);
-        alert.setContentText(message);
-        alert.showAndWait();
-    }
-
-    private void updatePropertiesPane(PageModel page, MasterPage masterPage, BdocObject object) {
-        propertiesContainer.getChildren().clear();
-
-        LayerModel objectLayer = page.getLayers().stream()
-                .filter(l -> l.getId().equals(object.getLayerRef()))
-                .findFirst()
-                .orElse(null);
-
-        if (objectLayer == null) return;
-
-        Label objectInfo = new Label("Object ID: " + object.getId() + "\nType: " + object.getType());
-        objectInfo.setStyle("-fx-text-fill: #475569;");
-
-        Unit currentUnit = Unit.fromString(page.getUnit());
-        Geometry go = object.getGeometry();
-        Label geometryInfo = new Label(String.format(
-                "Geometry (%s):\nX: %.1f, Y: %.1f\nW: %.1f, H: %.1f",
-                page.getUnit(),
-                currentUnit.fromPoints(go.getX()),
-                currentUnit.fromPoints(go.getY()),
-                currentUnit.fromPoints(go.getWidth()),
-                currentUnit.fromPoints(go.getHeight())));
-        geometryInfo.setStyle("-fx-text-fill: #1E293B; -fx-font-family: 'Consolas'; -fx-font-size: 11px; -fx-padding: 5 0 5 0;");
-
-        Label layerLabel = new Label("Layer: " + objectLayer.getName() + " (" + objectLayer.getRole() + ")");
-        layerLabel.setStyle("-fx-font-weight: bold; -fx-padding: 10 0 0 0;");
-
-        visibleCheckBox = new CheckBox("Layer Visible");
-        visibleCheckBox.setSelected(objectLayer.isVisible());
-        visibleCheckBox.setOnAction(e -> {
-            objectLayer.setVisible(visibleCheckBox.isSelected());
-            renderCurrentPage();
-            refreshTree();
-        });
-
-        Label opacityLabel = new Label("Layer Opacity: " + Math.round(objectLayer.getOpacity() * 100) + "%");
-        opacitySlider = new Slider(0.0, 1.0, objectLayer.getOpacity());
-        opacitySlider.valueProperty().addListener((obs, oldVal, newVal) -> {
-            objectLayer.setOpacity(newVal.doubleValue());
-            opacityLabel.setText("Layer Opacity: " + Math.round(newVal.doubleValue() * 100) + "%");
-            renderCurrentPage();
-        });
-
-        // Новый чекбокс — видимость конкретного объекта, независимо от слоя
-        CheckBox objectVisibleCheckBox = new CheckBox("Object Visible");
-        objectVisibleCheckBox.setSelected(object.isVisible());
-        objectVisibleCheckBox.setOnAction(e -> {
-            boolean isRawMaster = pageRenderer.isRawMasterObject(object, masterPage);
-            BdocObject target = isRawMaster
-                    ? materializeOverrideIfNeeded(page, masterPage, object)
-                    : object;
-            target.setVisible(objectVisibleCheckBox.isSelected());
-            if (isRawMaster) {
-                selectedObject = target;
-            }
-            renderCurrentPage();
-            refreshTree();
-        });
-
-        propertiesContainer.getChildren().addAll(
-                objectInfo,
-                geometryInfo,
-                new Separator(),
-                layerLabel,
-                visibleCheckBox,
-                opacityLabel,
-                opacitySlider,
-                new Separator(),
-                objectVisibleCheckBox
-        );
-
-        if (object.isMasterOverride()) {
-            Label masterInfo = new Label("Linked to master: " + object.getMasterSourceId());
-            masterInfo.setStyle("-fx-text-fill: #B45309; -fx-font-size: 11px; -fx-padding: 8 0 0 0;");
-
-            Button restoreBtn = new Button("Restore to Master");
-            restoreBtn.setOnAction(e -> {
-                BdocObject restored = restoreToMaster(page, masterPage, object);
-                selectedObject = restored;
-                statusLabel.setText("Restored to master: " + (restored != null ? restored.getId() : "?"));
-                renderCurrentPage();
-                refreshTree();
-                if (restored != null) {
-                    updatePropertiesPane(page, masterPage, restored);
-                } else {
-                    propertiesContainer.getChildren().clear();
-                }
-            });
-
-            propertiesContainer.getChildren().addAll(masterInfo, restoreBtn);
-        }
-    }
-
-    private void updateTextEditorPane(TextFrame textFrame, StoryModel story) {
-        propertiesContainer.getChildren().clear();
-
-        Label titleLabel = new Label("Text Frame Content");
-        titleLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 12px;");
-
-        Label infoLabel = new Label("Frame ID: " + textFrame.getId() + "\nStory Ref: " + textFrame.getStoryRef());
-        infoLabel.setStyle("-fx-text-fill: #64748B; -fx-font-size: 11px;");
-
-        storyTextArea = new TextArea();
-        storyTextArea.setPrefHeight(300);
-        storyTextArea.setWrapText(true);
-
-        if (story != null) {
-            storyTextArea.setText(story.getJoinedText());
-        }
-
-        storyTextArea.textProperty().addListener((obs, oldText, newText) -> {
-            if (story != null) {
-                story.getParagraphs().clear();
-                String[] lines = newText.split("\n");
-                for (String line : lines) {
-                    story.getParagraphs().add(new Paragraph("body", "body-text", line));
-                }
-                renderCurrentPage();
-            }
-        });
-
-        Label hintLabel = new Label("Tip: You can paste cleaned OCR text here. Advertisement blocks can be wiped instantly.");
-        hintLabel.setWrapText(true);
-        hintLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px; -fx-font-style: italic;");
-
-        propertiesContainer.getChildren().addAll(
-                titleLabel,
-                infoLabel,
-                new Separator(),
-                storyTextArea,
-                hintLabel
-        );
-    }
-
-    private BdocObject materializeOverrideIfNeeded(PageModel page, MasterPage masterPage, BdocObject object) {
-        if (masterPage == null || object.isMasterOverride()) {
-            return object;
-        }
-        if (masterPage.findObject(object.getId()) == null) {
-            return object;
-        }
-
-        Set<String> overridden = new HashSet<>();
-        overridden.add("geometry");
-        Geometry clonedGeometry = object.getGeometry().copy();
-
-        BdocObject override;
-        if (object instanceof TextFrame tf) {
-            override = new TextFrame(tf.getId(), tf.getLayerRef(), clonedGeometry, tf.getStoryRef(), tf.getId(), overridden);
-        } else if (object instanceof ImageFrame imf) {
-            override = new ImageFrame(imf.getId(), imf.getLayerRef(), clonedGeometry, imf.getAssetRef(), imf.getId(), overridden);
-        } else if (object instanceof VectorShape vs) {
-            override = new VectorShape(vs.getId(), vs.getLayerRef(), clonedGeometry, vs.getShapeType(), vs.getId(), overridden);
-        } else if (object instanceof HeaderFooterRule hfr) {
-            override = new HeaderFooterRule(
-                    hfr.getId(), hfr.getLayerRef(), clonedGeometry,
-                    hfr.getZone(), hfr.getTextTemplate(), hfr.getStyleRef(),
-                    hfr.getId(), overridden);
-        } else {
-            return object;
-        }
-
-        page.getObjects().add(override);
-        refreshTree();
-        return override;
-    }
-
-    private BdocObject restoreToMaster(PageModel page, MasterPage masterPage, BdocObject overrideObject) {
-        if (masterPage == null || !overrideObject.isMasterOverride()) {
-            return overrideObject;
-        }
-        page.getObjects().removeIf(o -> o.getId().equals(overrideObject.getId()) && o.isMasterOverride());
-        return masterPage.findObject(overrideObject.getMasterSourceId());
-    }
-
     private void saveDocument(DocumentHandle handle, File targetFile) throws IOException {
         ObjectMapper jsonMapper = new ObjectMapper();
         CBORMapper cborMapper = new CBORMapper();
@@ -903,77 +704,58 @@ public class BdocEditorApp extends Application {
         }
     }
 
-    private double[] toLocalPoint(double screenX, double screenY, BdocObject object) {
-        TransformModel t = object.getTransform();
-        if (t == null || t.isIdentity()) {
-            return new double[]{screenX, screenY};
-        }
-        Geometry g = object.getGeometry();
-        double centerX = g.getX() + g.getWidth() / 2.0;
-        double centerY = g.getY() + g.getHeight() / 2.0;
+    // ================= Master overrides =================
 
-        double px = screenX - t.getTranslateX();
-        double py = screenY - t.getTranslateY();
-
-        px -= centerX;
-        py -= centerY;
-
-        double rad = Math.toRadians(-t.getRotationDegrees());
-        double cos = Math.cos(rad);
-        double sin = Math.sin(rad);
-        double rx = px * cos - py * sin;
-        double ry = px * sin + py * cos;
-
-        rx /= t.getScaleX();
-        ry /= t.getScaleY();
-
-        return new double[]{rx + centerX, ry + centerY};
-    }
-
-    private PathModel rescalePathData(PathModel original, Geometry oldBox, Geometry newBox) {
-        double oldW = oldBox.getWidth();
-        double oldH = oldBox.getHeight();
-        double scaleX = oldW != 0 ? newBox.getWidth() / oldW : 1.0;
-        double scaleY = oldH != 0 ? newBox.getHeight() / oldH : 1.0;
-
-        List<PathPoint> rescaled = new java.util.ArrayList<>();
-        for (PathPoint p : original.getPoints()) {
-            double nx = newBox.getX() + (p.getX() - oldBox.getX()) * scaleX;
-            double ny = newBox.getY() + (p.getY() - oldBox.getY()) * scaleY;
-            if ("C".equals(p.getCommand())) {
-                double nx1 = newBox.getX() + (p.getX1() - oldBox.getX()) * scaleX;
-                double ny1 = newBox.getY() + (p.getY1() - oldBox.getY()) * scaleY;
-                double nx2 = newBox.getX() + (p.getX2() - oldBox.getX()) * scaleX;
-                double ny2 = newBox.getY() + (p.getY2() - oldBox.getY()) * scaleY;
-                rescaled.add(PathPoint.cubicTo(nx1, ny1, nx2, ny2, nx, ny));
-            } else if ("L".equals(p.getCommand())) {
-                rescaled.add(PathPoint.lineTo(nx, ny));
-            } else {
-                rescaled.add(PathPoint.moveTo(nx, ny));
-            }
-        }
-        return new PathModel(original.getContourType(), rescaled, original.getFillRule());
-    }
-
-
-    private BdocObject replacePathData(PageModel page, BdocObject object, PathModel newPathData) {
-        if (!(object instanceof VectorShape vs)) {
+    private BdocObject materializeOverrideIfNeededInternal(PageModel page, MasterPage masterPage, BdocObject object) {
+        if (masterPage == null || object.isMasterOverride()) {
             return object;
         }
-        VectorShape updated = new VectorShape(
-                vs.getId(), vs.getLayerRef(), vs.getGeometry(), vs.getShapeType(),
-                vs.getMasterSourceId(), vs.getOverriddenProperties(), vs.isVisible(),
-                vs.getClipGeometry(), vs.getMaskRef(), vs.isMask(), vs.isArtifact(),
-                vs.getArtifactType(), vs.getTextWrap(), newPathData, vs.getTransform()
-        );
-        for (int i = 0; i < page.getObjects().size(); i++) {
-            if (page.getObjects().get(i).getId().equals(vs.getId())) {
-                page.getObjects().set(i, updated);
-                break;
-            }
+        if (masterPage.findObject(object.getId()) == null) {
+            return object;
         }
-        return updated;
+
+        Set<String> overridden = new HashSet<>();
+        overridden.add("geometry");
+        Geometry clonedGeometry = object.getGeometry().copy();
+
+        BdocObject override;
+        if (object instanceof TextFrame tf) {
+            override = new TextFrame(tf.getId(), tf.getLayerRef(), clonedGeometry, tf.getStoryRef(), tf.getId(), overridden);
+        } else if (object instanceof ImageFrame imf) {
+            override = new ImageFrame(imf.getId(), imf.getLayerRef(), clonedGeometry, imf.getAssetRef(), imf.getId(), overridden);
+        } else if (object instanceof VectorShape vs) {
+            override = new VectorShape(vs.getId(), vs.getLayerRef(), clonedGeometry, vs.getShapeType(), vs.getId(), overridden);
+        } else if (object instanceof HeaderFooterRule hfr) {
+            override = new HeaderFooterRule(
+                    hfr.getId(), hfr.getLayerRef(), clonedGeometry,
+                    hfr.getZone(), hfr.getTextTemplate(), hfr.getStyleRef(),
+                    hfr.getId(), overridden);
+        } else {
+            return object;
+        }
+
+        page.getObjects().add(override);
+        refreshTree();
+        return override;
     }
+
+    private BdocObject restoreToMaster(PageModel page, MasterPage masterPage, BdocObject overrideObject) {
+        if (masterPage == null || !overrideObject.isMasterOverride()) {
+            return overrideObject;
+        }
+        page.getObjects().removeIf(o -> o.getId().equals(overrideObject.getId()) && o.isMasterOverride());
+        return masterPage.findObject(overrideObject.getMasterSourceId());
+    }
+
+    @Override
+    public BdocObject restoreToMaster(BdocObject overrideObject) {
+        return restoreToMaster(getCurrentPage(), getCurrentMasterPage(), overrideObject);
+    }
+
+    // getter используется TextEditorPropertiesPanelFactory/DefaultGeometryPropertiesPanelFactory
+    // через EditorContext — restoreToMaster остаётся приватным вызовом, экспонируемым
+    // отдельной кнопкой прямо в DefaultGeometryPropertiesPanelFactory через runWriteAction.
+    // Для этого нужен метод в EditorContext — см. примечание ниже.
 
     private void showValidationErrors(String title, BdocValidationException validationEx) {
         StringBuilder sb = new StringBuilder();
@@ -990,5 +772,9 @@ public class BdocEditorApp extends Application {
         textArea.setPrefHeight(300);
         alert.getDialogPane().setContent(textArea);
         alert.showAndWait();
+    }
+
+    public static void main(String[] args) {
+        launch(args);
     }
 }
