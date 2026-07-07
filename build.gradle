@@ -30,3 +30,30 @@ subprojects {
         useJUnitPlatform()
     }
 }
+
+def pluginProjects = subprojects.findAll { it.name.startsWith('bdoc-plugin-') }
+
+tasks.register('cleanPluginsDir', Delete) {
+    delete layout.projectDirectory.dir('plugins')
+}
+
+tasks.register('collectPlugins') {
+    dependsOn pluginProjects.collect { it.tasks.named('jar') }
+
+    doLast {
+        def pluginsDir = layout.projectDirectory.dir('plugins').asFile
+        pluginsDir.mkdirs()
+
+        pluginProjects.each { p ->
+            copy {
+                from p.layout.buildDirectory.dir('libs')
+                include '*.jar'
+                into pluginsDir
+            }
+        }
+    }
+}
+
+tasks.named('build') {
+    dependsOn tasks.named('collectPlugins')
+}

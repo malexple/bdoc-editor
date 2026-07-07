@@ -9,18 +9,15 @@ javafx {
 }
 
 dependencies {
-    implementation project(':bdoc-core')
-    implementation project(':bdoc-spi')
-    implementation project(':bdoc-extension')
     implementation project(':bdoc-ui')
 }
 
 application {
+    mainModule = 'org.example.bdoc.desktop'
     mainClass = 'org.example.bdoc.Launcher'
 }
 
 run {
-    jvmArgs = [
-            '--add-modules', 'javafx.controls,javafx.graphics,javafx.swing'
-    ]
+    workingDir = rootProject.projectDir
+    systemProperty 'bdoc.plugins.dir', "${rootProject.projectDir}/plugins"
 }

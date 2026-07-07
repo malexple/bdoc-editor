@@ -1,13 +1,13 @@
 plugins {
+    id 'java-library'
     id 'org.openjfx.javafxplugin' version '0.1.0'
 }
 
 javafx {
     version = '21.0.2'
-    modules = ['javafx.base', 'javafx.controls', 'javafx.graphics']
+    modules = ['javafx.controls']
 }
 
 dependencies {
-    implementation project(':bdoc-core')
     implementation project(':bdoc-spi')
 }

@@ -9,7 +9,6 @@ import org.example.bdoc.model.TextFrame;
 import org.example.bdoc.render.PageRenderer;
 import org.example.bdoc.spi.DtpToolStrategy;
 import org.example.bdoc.spi.EditorContext;
-import org.example.bdoc.spi.PropertiesPanelFactory;
 
 import java.util.List;
 

@@ -32,6 +32,13 @@ import org.example.bdoc.ui.tool.TextToolStrategy;
 import org.example.bdoc.spi.PropertiesPanelFactory;
 import org.example.bdoc.spi.DtpToolStrategy;
 
+import org.example.bdoc.plugin.PluginRuntime;
+import org.example.bdoc.spi.ToolbarActionExtension;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.ServiceLoader;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -74,6 +81,7 @@ public class BdocEditorApp extends Application implements EditorContext {
 
     /** Узел дерева: либо страница, либо слой, либо объект. */
     private enum NodeKind { DOCUMENT, PAGE, LAYER, OBJECT }
+    private final Map<ToolbarActionExtension, Button> pluginButtons = new LinkedHashMap<>();
 
     private static final class TreeNodeData {
         final NodeKind kind;
@@ -898,17 +906,43 @@ public class BdocEditorApp extends Application implements EditorContext {
 
     private ToolBar buildFileToolBar(Stage stage) {
         Label titleLabel = new Label("BDoc Editor v0.1");
+
         Button openBtn = new Button("Open");
         openBtn.getStyleClass().add("bdoc-toolbar-button");
         openBtn.setOnAction(e -> onOpen(stage));
+
         Button saveAsBtn = new Button("Save As");
         saveAsBtn.getStyleClass().add("bdoc-toolbar-button");
         saveAsBtn.setOnAction(e -> onSaveAs(stage));
+
         Button newSampleBtn = new Button("New Sample");
         newSampleBtn.getStyleClass().add("bdoc-toolbar-button");
         newSampleBtn.setOnAction(e -> onNewSample(stage));
 
         ToolBar toolBar = new ToolBar(titleLabel, new Separator(), newSampleBtn, openBtn, saveAsBtn);
+
+        ModuleLayer layer = PluginRuntime.getLayer();
+        ServiceLoader<ToolbarActionExtension> loader =
+                ServiceLoader.load(layer, ToolbarActionExtension.class);
+
+        int pluginCount = 0;
+        for (ToolbarActionExtension ext : loader) {
+            pluginCount++;
+            System.out.println("Loaded toolbar plugin: " + ext.getClass().getName()
+                    + " from module " + ext.getClass().getModule().getName());
+
+            Button pluginBtn = new Button(ext.getActionId());
+            pluginBtn.getStyleClass().add("bdoc-toolbar-button");
+            pluginBtn.setOnAction(e -> ext.execute(this));
+            pluginBtn.setDisable(!ext.isEnabled(this));
+
+            pluginButtons.put(ext, pluginBtn);
+            toolBar.getItems().add(new Separator());
+            toolBar.getItems().add(pluginBtn);
+        }
+
+        System.out.println("Toolbar plugins found: " + pluginCount);
+
         toolBar.getStyleClass().add("bdoc-file-toolbar");
         return toolBar;
     }

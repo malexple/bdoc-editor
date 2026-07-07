@@ -2,6 +2,9 @@ rootProject.name = 'bdoc-editor'
 
 include 'bdoc-core'
 include 'bdoc-spi'
-include 'bdoc-extension'
 include 'bdoc-ui'
 include 'bdoc-app'
+include 'bdoc-plugin-demo-toolbar'
+include 'bdoc-model'
+include 'bdoc-io'
+
