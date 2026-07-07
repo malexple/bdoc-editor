@@ -1,0 +1,26 @@
+plugins {
+    id 'application'
+    id 'org.openjfx.javafxplugin' version '0.1.0'
+}
+
+javafx {
+    version = '21.0.2'
+    modules = ['javafx.controls', 'javafx.graphics', 'javafx.swing']
+}
+
+dependencies {
+    implementation project(':bdoc-core')
+    implementation project(':bdoc-spi')
+    implementation project(':bdoc-extension')
+    implementation project(':bdoc-ui')
+}
+
+application {
+    mainClass = 'org.example.bdoc.Launcher'
+}
+
+run {
+    jvmArgs = [
+            '--add-modules', 'javafx.controls,javafx.graphics,javafx.swing'
+    ]
+}

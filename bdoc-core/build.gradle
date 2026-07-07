@@ -1,0 +1,17 @@
+plugins {
+    id 'org.openjfx.javafxplugin' version '0.1.0'
+}
+
+javafx {
+    version = '21.0.2'
+    modules = ['javafx.graphics']
+}
+
+dependencies {
+    implementation 'jakarta.xml.bind:jakarta.xml.bind-api:4.0.2'
+    implementation 'com.sun.xml.bind:jaxb-impl:4.0.5'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.20.0'
+    implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:2.20.0'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+}
