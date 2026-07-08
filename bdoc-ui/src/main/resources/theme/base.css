@@ -3,7 +3,7 @@
  * ============================================================ */
 
 .root {
-    -fx-font-family: "Inter";
+    -fx-font-family: "Inter", "Segoe UI", sans-serif;
     -fx-font-size: 12px;
     -fx-background-color: -fx-base-bg;
     -fx-text-fill: -fx-text-primary;
@@ -127,6 +127,7 @@
 .bdoc-tool-palette-button:selected {
     -fx-background-color: -fx-accent;
     -fx-text-fill: white;
+
 }
 
 /* ---------- Main workspace ---------- */
@@ -261,7 +262,7 @@
     -fx-highlight-text-fill: white;
     -fx-border-color: -fx-border-subtle;
     -fx-border-radius: 4;
-    -fx-font-family: "JetBrains Mono";
+    -fx-font-family: "Inter";
 }
 
 .text-area .content {
@@ -336,3 +337,21 @@
     -fx-text-fill: white;
     -fx-border-color: -fx-accent;
 }
+
+.bdoc-muted-label {
+    -fx-text-fill: -fx-text-secondary;
+    -fx-font-size: 11px;
+}
+
+.bdoc-mono-label {
+    -fx-text-fill: -fx-text-primary;
+    -fx-font-family: "JetBrains Mono";
+    -fx-font-size: 11px;
+}
+
+.bdoc-hint-label {
+    -fx-text-fill: -fx-text-secondary;
+    -fx-font-size: 11px;
+}
+
+

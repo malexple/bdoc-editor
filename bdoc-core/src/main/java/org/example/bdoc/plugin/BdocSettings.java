@@ -134,4 +134,12 @@ public final class BdocSettings {
                 p.getBoolean("showProperties", true)
         };
     }
+
+    public void saveLocale(String localeTag) {
+        root.node("appearance").put("locale", localeTag);
+    }
+
+    public String loadLocale() {
+        return root.node("appearance").get("locale", "en");
+    }
 }

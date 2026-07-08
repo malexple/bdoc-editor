@@ -3,6 +3,7 @@ module org.example.bdoc.ui {
     requires org.example.bdoc.io;
     requires org.example.bdoc.spi;
     requires org.example.bdoc.core;
+    requires java.prefs;
 
     requires javafx.controls;
     requires javafx.graphics;

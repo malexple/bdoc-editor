@@ -9,6 +9,15 @@ public interface ToolbarActionExtension {
 
     void execute(Object context);
 
-    default boolean isEnabled(Object context) { return true; }
-    default boolean isSelected(Object context) { return false; }
+    default boolean isEnabled(Object context) {
+        return true;
+    }
+
+    default boolean isSelected(Object context) {
+        return false;
+    }
+
+    default String getBundleOwnerId() {
+        return "core";
+    }
 }
