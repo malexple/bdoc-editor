@@ -523,6 +523,7 @@ public class BdocEditorApp extends Application implements EditorContext {
         palette.getStyleClass().add("bdoc-tool-palette");
 
         ToggleGroup toolGroup = new ToggleGroup();
+        LocalizationManager i18n = LocalizationManager.getInstance();
 
         for (DtpToolStrategy tool : PluginContext.getInstance().getRegisteredTools().values()) {
             ToggleButton btn = new ToggleButton(glyphFor(tool.getToolId()));
@@ -542,7 +543,11 @@ public class BdocEditorApp extends Application implements EditorContext {
 
                 currentToolId = tool.getToolId();
                 tool.activate(this);
-                statusLabel.setText("Active Tool: " + tool.getLabel());
+                statusLabel.textProperty().unbind();
+                statusLabel.setText(java.text.MessageFormat.format(
+                        i18n.get("status.tool.active"),
+                        tool.getLabel()
+                ));
                 renderCurrentPage();
             });
 
@@ -919,6 +924,7 @@ public class BdocEditorApp extends Application implements EditorContext {
     }
 
     private void refreshTreeInternal() {
+        LocalizationManager i18n = LocalizationManager.getInstance();
         if (document == null) {
             documentTree.setRoot(null);
             return;
@@ -954,7 +960,10 @@ public class BdocEditorApp extends Application implements EditorContext {
                     pageItem.getChildren().add(layerItem);
                 }
             } catch (IOException ex) {
-                showError("Tree build error", "Failed to load page " + pageIndex + ": " + ex.getMessage());
+                showError(
+                        i18n.get("error.treeBuild.title"),
+                        java.text.MessageFormat.format(i18n.get("error.treeBuild.message"), pageIndex, ex.getMessage())
+                );
             }
 
             root.getChildren().add(pageItem);
