@@ -1,8 +1,5 @@
 /* ============================================================
  * BDoc Editor — базовая геометрия и структура компонентов.
- * Цветовые значения сюда НЕ добавляются — они лежат только
- * в obsidian-ink.css и paper-matte.css как переопределение
- * переменных -fx-*, объявленных в .root каждой темы.
  * ============================================================ */
 
 .root {
@@ -56,7 +53,7 @@
     -fx-opacity: 0.5;
 }
 
-/* ---------- ToolBar (общий) ---------- */
+/* ---------- ToolBar ---------- */
 
 .tool-bar {
     -fx-background-color: -fx-panel-bg-darker;
@@ -132,47 +129,47 @@
     -fx-text-fill: white;
 }
 
-/* ---------- Canvas / Pasteboard ---------- */
+/* ---------- Main workspace ---------- */
+
+.bdoc-main-split {
+    -fx-background-color: -fx-base-bg;
+}
 
 .bdoc-canvas-pane {
     -fx-background-color: -fx-pasteboard-bg;
 }
 
-/* ---------- Document Tree ---------- */
-
-.tree-view {
-    -fx-background-color: -fx-panel-bg;
-    -fx-control-inner-background: -fx-panel-bg;
-    -fx-text-fill: -fx-text-primary;
-    -fx-border-color: transparent -fx-border-subtle transparent transparent;
-    -fx-border-width: 0 1 0 0;
-}
-
-.tree-cell {
-    -fx-background-color: -fx-panel-bg;
-    -fx-text-fill: -fx-text-primary;
-    -fx-padding: 3 6 3 6;
-}
-
-.tree-cell:filled:selected {
-    -fx-background-color: derive(-fx-accent, 40%);
-}
-
-.tree-cell:filled:hover {
-    -fx-background-color: derive(-fx-panel-bg, 12%);
-}
-
-.tree-cell .check-box .box {
-    -fx-background-color: -fx-panel-bg-darker;
-    -fx-border-color: -fx-border-subtle;
-}
-
-/* ---------- Properties Panel ---------- */
-
-.bdoc-properties-pane {
+.bdoc-right-sidebar-container {
     -fx-background-color: -fx-panel-bg;
     -fx-border-color: transparent transparent transparent -fx-border-subtle;
     -fx-border-width: 0 0 0 1;
+}
+
+.bdoc-right-sidebar-split {
+    -fx-background-color: -fx-panel-bg;
+}
+
+/* ---------- Properties / Tree panels ---------- */
+
+.bdoc-properties-pane,
+.bdoc-tree-pane {
+    -fx-background-color: -fx-panel-bg;
+}
+
+.bdoc-tree-pane {
+    -fx-border-color: -fx-border-subtle transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+}
+
+.bdoc-properties-scroll {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+    -fx-border-color: transparent;
+}
+
+.bdoc-properties-scroll > .viewport {
+    -fx-background-color: transparent;
 }
 
 .bdoc-section-title {
@@ -203,7 +200,37 @@
     -fx-border-width: 1 0 0 0;
 }
 
-/* ---------- Стандартные контролы ---------- */
+/* ---------- Document Tree ---------- */
+
+.tree-view,
+.bdoc-document-tree {
+    -fx-background-color: -fx-panel-bg;
+    -fx-control-inner-background: -fx-panel-bg;
+    -fx-text-fill: -fx-text-primary;
+    -fx-border-color: transparent;
+    -fx-border-width: 0;
+}
+
+.tree-cell {
+    -fx-background-color: -fx-panel-bg;
+    -fx-text-fill: -fx-text-primary;
+    -fx-padding: 3 6 3 6;
+}
+
+.tree-cell:filled:selected {
+    -fx-background-color: derive(-fx-accent, 40%);
+}
+
+.tree-cell:filled:hover {
+    -fx-background-color: derive(-fx-panel-bg, 12%);
+}
+
+.tree-cell .check-box .box {
+    -fx-background-color: -fx-panel-bg-darker;
+    -fx-border-color: -fx-border-subtle;
+}
+
+/* ---------- Standard controls ---------- */
 
 .check-box {
     -fx-text-fill: -fx-text-primary;
@@ -241,15 +268,37 @@
     -fx-background-color: -fx-panel-bg-darker;
 }
 
-/* ---------- StatusBar ---------- */
+.scroll-pane {
+    -fx-background-color: transparent;
+}
+
+.scroll-pane > .viewport {
+    -fx-background-color: transparent;
+}
+
+/* ---------- Status bar ---------- */
 
 .bdoc-status-bar {
+    -fx-alignment: center-left;
+    -fx-spacing: 10;
     -fx-background-color: -fx-panel-bg-darker;
-    -fx-text-fill: -fx-text-secondary;
-    -fx-font-size: 11px;
     -fx-padding: 5 10 5 10;
     -fx-border-color: -fx-border-subtle transparent transparent transparent;
     -fx-border-width: 1 0 0 0;
+}
+
+.bdoc-status-label {
+    -fx-text-fill: -fx-text-secondary;
+    -fx-font-size: 11px;
+}
+
+.bdoc-status-separator {
+    -fx-padding: 0 2 0 2;
+}
+
+.bdoc-status-separator .line {
+    -fx-border-color: -fx-border-subtle;
+    -fx-border-width: 0 1 0 0;
 }
 
 /* ---------- SplitPane ---------- */
@@ -267,7 +316,7 @@
     -fx-background-color: -fx-accent;
 }
 
-/* ---------- Кнопки диалогов ---------- */
+/* ---------- Buttons ---------- */
 
 .button {
     -fx-background-color: derive(-fx-panel-bg, 10%);

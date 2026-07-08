@@ -6,8 +6,6 @@ import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.*;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.example.bdoc.io.BdocValidationException;
@@ -40,6 +38,11 @@ import java.util.function.Consumer;
 public class BdocEditorApp extends Application
         implements EditorContext, BdocDocumentTreeController.Callbacks {
 
+    private static final double DEFAULT_STAGE_WIDTH = 1360;
+    private static final double DEFAULT_RIGHT_SIDEBAR_WIDTH = 300;
+    private static final double DEFAULT_RIGHT_SIDEBAR_RATIO = 1.0 - (DEFAULT_RIGHT_SIDEBAR_WIDTH / DEFAULT_STAGE_WIDTH);
+    private static final double DEFAULT_RIGHT_VERTICAL_DIVIDER = 0.62;
+
     private final BdocDocumentIoService documentIo = new BdocDocumentIoService();
     private final PageRenderer pageRenderer = new PageRenderer();
     private final ThemeManager themeManager = new ThemeManager();
@@ -59,6 +62,9 @@ public class BdocEditorApp extends Application
     private BdocDocumentTreeController treeController;
     private Menu recentFilesMenu;
 
+    private CheckMenuItem showTreeItem;
+    private CheckMenuItem showPropsItem;
+
     @Override
     public void start(Stage stage) {
         this.primaryStage = stage;
@@ -74,16 +80,20 @@ public class BdocEditorApp extends Application
                 this
         );
 
-        MenuBar menuBar = buildMenuBar(stage, view.getMainSplitPane());
+        MenuBar menuBar = buildMenuBar(stage);
         ToolBar fileToolBar = buildFileToolBar(stage);
         ToolBar toolPalette = buildToolPalette();
 
         view.setTopBars(menuBar, fileToolBar);
         view.setToolPalette(toolPalette);
+        view.setToolStatus("Tool: " + resolveToolLabel(currentToolId));
+        view.setContextStatus("Page: —");
+        view.setStatusMessage("No document loaded");
+        view.setZoomStatus("100%");
 
         wireCanvasEvents(view.getCanvas());
 
-        Scene scene = new Scene(view.getRoot(), 1360, 900);
+        Scene scene = new Scene(view.getRoot(), DEFAULT_STAGE_WIDTH, 900);
         themeManager.apply(scene, BdocSettings.getInstance().loadTheme());
 
         stage.setTitle("BDoc Editor - Реставрация печатных изданий");
@@ -100,6 +110,12 @@ public class BdocEditorApp extends Application
         canvas.setOnMousePressed(e -> dispatchToActiveTool(strategy -> strategy.onMousePressed(e, this)));
         canvas.setOnMouseDragged(e -> dispatchToActiveTool(strategy -> strategy.onMouseDragged(e, this)));
         canvas.setOnMouseReleased(e -> dispatchToActiveTool(strategy -> strategy.onMouseReleased(e, this)));
+        canvas.setOnMouseMoved(e -> {
+            view.setContextStatus(String.format("Cursor: %.1f, %.1f pt", e.getX(), e.getY()));
+        });
+        canvas.setOnMouseExited(e -> {
+            updateContextStatusForCurrentState();
+        });
     }
 
     private void restoreWindowState(Stage stage) {
@@ -114,8 +130,10 @@ public class BdocEditorApp extends Application
         }
 
         double[] savedDividers = BdocSettings.getInstance()
-                .loadDividerPositions(new double[]{0.22, 0.76});
-        view.getMainSplitPane().setDividerPositions(savedDividers[0], savedDividers[1]);
+                .loadDividerPositions(new double[]{DEFAULT_RIGHT_SIDEBAR_RATIO, DEFAULT_RIGHT_VERTICAL_DIVIDER});
+
+        view.getMainSplitPane().setDividerPositions(savedDividers[0]);
+        view.getRightSidebarSplitPane().setDividerPositions(savedDividers[1]);
     }
 
     private void installClosePersistence(Stage stage) {
@@ -127,7 +145,11 @@ public class BdocEditorApp extends Application
                     stage.getHeight(),
                     stage.isMaximized()
             );
-            BdocSettings.getInstance().saveDividerPositions(view.getMainSplitPane().getDividerPositions());
+
+            double mainDivider = view.getMainSplitPane().getDividerPositions()[0];
+            double rightDivider = view.getRightSidebarSplitPane().getDividerPositions()[0];
+            BdocSettings.getInstance().saveDividerPositions(mainDivider, rightDivider);
+
             BdocSettings.getInstance().saveActiveTool(currentToolId);
         });
     }
@@ -204,6 +226,7 @@ public class BdocEditorApp extends Application
         this.selectedObject = object;
         rebuildPropertiesPanel(object);
         treeController.selectTreeNodeFor(object);
+        updateContextStatusForCurrentState();
     }
 
     @Override
@@ -266,6 +289,8 @@ public class BdocEditorApp extends Application
             if (strategy != null) {
                 strategy.renderOverlay(gc, this);
             }
+
+            updateContextStatusForCurrentState();
         } catch (IOException ex) {
             showError("Render error", ex.getMessage());
         }
@@ -282,7 +307,7 @@ public class BdocEditorApp extends Application
 
     @Override
     public void setStatusText(String text) {
-        view.getStatusLabel().setText(text);
+        view.setStatusMessage(text);
     }
 
     @Override
@@ -404,9 +429,9 @@ public class BdocEditorApp extends Application
         }
 
         try {
-            view.getStatusLabel().setText("Re-packing BDoc archive with new layout and text...");
+            view.setStatusMessage("Re-packing BDoc archive with new layout and text...");
             documentIo.save(document, target);
-            view.getStatusLabel().setText("Saved to " + target.getAbsolutePath() + " [Pack OK]");
+            view.setStatusMessage("Saved to " + target.getAbsolutePath() + " [Pack OK]");
 
             currentFile = target;
             BdocSettings.getInstance().pushRecentFile(target.getAbsolutePath());
@@ -442,9 +467,8 @@ public class BdocEditorApp extends Application
             refreshTree();
             renderCurrentPage();
 
-            view.getStatusLabel().setText(
-                    "Opened: " + file.getName() + " (" + document.getPageCount() + " pages)"
-            );
+            view.setStatusMessage("Opened: " + file.getName() + " (" + document.getPageCount() + " pages)");
+            updateContextStatusForCurrentState();
 
             BdocSettings.getInstance().pushRecentFile(file.getAbsolutePath());
             rebuildRecentFilesMenu();
@@ -549,7 +573,7 @@ public class BdocEditorApp extends Application
         alert.showAndWait();
     }
 
-    private MenuBar buildMenuBar(Stage stage, SplitPane splitPane) {
+    private MenuBar buildMenuBar(Stage stage) {
         Menu fileMenu = new Menu("File");
 
         MenuItem newSampleItem = new MenuItem("New Sample");
@@ -585,15 +609,13 @@ public class BdocEditorApp extends Application
 
         Menu viewMenu = new Menu("View");
 
-        CheckMenuItem showTreeItem = new CheckMenuItem("Show Document Tree");
+        showTreeItem = new CheckMenuItem("Show Document Tree");
         showTreeItem.setSelected(true);
-        showTreeItem.selectedProperty().addListener((obs, was, is) ->
-                splitPane.setDividerPositions(is ? 0.22 : 0.0, 0.76));
+        showTreeItem.selectedProperty().addListener((obs, was, is) -> applyRightPanelVisibility());
 
-        CheckMenuItem showPropsItem = new CheckMenuItem("Show Properties Panel");
+        showPropsItem = new CheckMenuItem("Show Properties Panel");
         showPropsItem.setSelected(true);
-        showPropsItem.selectedProperty().addListener((obs, was, is) ->
-                splitPane.setDividerPositions(showTreeItem.isSelected() ? 0.22 : 0.0, is ? 0.76 : 1.0));
+        showPropsItem.selectedProperty().addListener((obs, was, is) -> applyRightPanelVisibility());
 
         viewMenu.getItems().addAll(showTreeItem, showPropsItem);
 
@@ -609,6 +631,45 @@ public class BdocEditorApp extends Application
         helpMenu.getItems().add(aboutItem);
 
         return new MenuBar(fileMenu, editMenu, viewMenu, helpMenu);
+    }
+
+    private void applyRightPanelVisibility() {
+        boolean showTree = showTreeItem != null && showTreeItem.isSelected();
+        boolean showProps = showPropsItem != null && showPropsItem.isSelected();
+
+        view.getTreePane().setVisible(showTree);
+        view.getTreePane().setManaged(showTree);
+
+        view.getPropertiesPane().setVisible(showProps);
+        view.getPropertiesPane().setManaged(showProps);
+
+        if (showProps && showTree) {
+            view.getRightSidebarSplitPane().setDividerPositions(
+                    normalizeDivider(view.getRightSidebarSplitPane().getDividerPositions()[0], DEFAULT_RIGHT_VERTICAL_DIVIDER)
+            );
+            view.getMainSplitPane().setDividerPositions(
+                    normalizeDivider(view.getMainSplitPane().getDividerPositions()[0], DEFAULT_RIGHT_SIDEBAR_RATIO)
+            );
+        } else if (showProps) {
+            view.getRightSidebarSplitPane().setDividerPositions(1.0);
+            view.getMainSplitPane().setDividerPositions(
+                    normalizeDivider(view.getMainSplitPane().getDividerPositions()[0], DEFAULT_RIGHT_SIDEBAR_RATIO)
+            );
+        } else if (showTree) {
+            view.getRightSidebarSplitPane().setDividerPositions(0.0);
+            view.getMainSplitPane().setDividerPositions(
+                    normalizeDivider(view.getMainSplitPane().getDividerPositions()[0], DEFAULT_RIGHT_SIDEBAR_RATIO)
+            );
+        } else {
+            view.getMainSplitPane().setDividerPositions(1.0);
+        }
+    }
+
+    private double normalizeDivider(double current, double fallback) {
+        if (Double.isNaN(current) || current <= 0.0 || current >= 1.0) {
+            return fallback;
+        }
+        return current;
     }
 
     private void rebuildRecentFilesMenu() {
@@ -703,7 +764,8 @@ public class BdocEditorApp extends Application
 
                 currentToolId = tool.getToolId();
                 tool.activate(this);
-                view.getStatusLabel().setText("Active Tool: " + tool.getLabel());
+                view.setToolStatus("Tool: " + tool.getLabel());
+                view.setStatusMessage("Active Tool: " + tool.getLabel());
                 renderCurrentPage();
             });
 
@@ -719,6 +781,40 @@ public class BdocEditorApp extends Application
             case "TEXT" -> "T";
             default -> "?";
         };
+    }
+
+    private String resolveToolLabel(String toolId) {
+        DtpToolStrategy tool = PluginContext.getInstance().getTool(toolId);
+        return tool != null ? tool.getLabel() : toolId;
+    }
+
+    private void updateContextStatusForCurrentState() {
+        if (document == null) {
+            view.setContextStatus("Page: —");
+            return;
+        }
+
+        if (selectedObject != null) {
+            view.setContextStatus("Selected: " + selectedObject.getId() + " [" + selectedObject.getType() + "]");
+            return;
+        }
+
+        try {
+            PageModel page = document.loadPage(currentPageIndex);
+            Unit currentUnit = Unit.fromString(page.getUnit());
+            double displayW = currentUnit.fromPoints(page.getWidth());
+            double displayH = currentUnit.fromPoints(page.getHeight());
+
+            view.setContextStatus(String.format(
+                    "Page %d • %.1f × %.1f %s",
+                    currentPageIndex,
+                    displayW,
+                    displayH,
+                    page.getUnit()
+            ));
+        } catch (IOException ex) {
+            view.setContextStatus("Page: error");
+        }
     }
 
     @Override
@@ -743,17 +839,15 @@ public class BdocEditorApp extends Application
             double displayW = currentUnit.fromPoints(page.getWidth());
             double displayH = currentUnit.fromPoints(page.getHeight());
 
-            view.getStatusLabel().setText(String.format(
-                    "Active Page: %d | Format: %.1f × %.1f %s (%.0f × %.0f pt)",
+            view.setContextStatus(String.format(
+                    "Page %d • %.1f × %.1f %s",
                     currentPageIndex,
                     displayW,
                     displayH,
-                    page.getUnit(),
-                    page.getWidth(),
-                    page.getHeight()
+                    page.getUnit()
             ));
         } catch (IOException ex) {
-            view.getStatusLabel().setText("Page selected (Render Error)");
+            view.setContextStatus("Page selected (Render Error)");
         }
 
         renderCurrentPage();
