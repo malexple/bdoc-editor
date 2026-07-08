@@ -10,10 +10,11 @@ The project introduces the **BDoc (Book Document)** format specification—a cle
 
 ## 🚀 Key Features & Architecture
 
-* **Strict Model/UI Separation:** The core data model (`bdoc-model`) consists of pure POJO classes completely decoupled from any UI framework (JavaFX/Canvas). This ensures headless document validation, easy CLI processing, and seamless third-party plugin scripting.
-* **Extensible SPI Plugin Architecture:** Inspired by the IntelliJ Platform, the UI dynamically registers utilities, custom toolbars, and filters via modular configurations.
-* **Prepress & Professional DTP Capabilities (In Development):** High-precision unit systems (points, millimeters, picas), multi-threaded text frames (Paragraph Composer based on the Knuth-Plass algorithm), full CMYK/Color Management integration, and rich geometry objects.
-* **Book Restoration Sandbox:** Dedicated data structures to hold dirty scan overlays, AI-OCR background text tracks, and structural metadata without violating core document schemas.
+* **Strict Model/UI Separation:** Pure POJO data model (`bdoc-model`) decoupled from JavaFX/Canvas for headless processing and scripting.
+* **Extensible SPI & ModuleLayer Plugin Architecture:** Dynamic module loading from `plugins/` via `ServiceLoader`, similar to the IntelliJ Platform.
+* **Hybrid Stream Processing (JSON + CBOR):** Fast, low-memory, lazy-loading of heavy pages via `CBORMapper`, with JSON metadata.
+* **DTP Background Threading Framework (`TaskQueue`):** Isolates heavy operations (OCR, layout) from the JavaFX thread to prevent freezing.
+
 
 ### 📸 Application Previews
 
@@ -95,16 +96,11 @@ The project is moving through a structured development cycle:
 * **Gradle** (Wrapper included)
 
 ### Build and Run
-Clone the repository and build the project using Gradle:
-
+Clone the repository and build:
 ```bash
 git clone https://github.com
 cd bdoc-editor
 ./gradlew build
-```
-
-To launch the desktop interface, run the target application module subtask:
-```bash
 ./gradlew :bdoc-ui:run
 ```
 
