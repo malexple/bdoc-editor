@@ -1,0 +1,22 @@
+/* ============================================================
+ * Светлая тема BDoc Editor.
+ * Тёплая бумажная поверхность вместо чистого белого.
+ * ============================================================ */
+
+.root {
+    -fx-base-bg: #F5F3EF;
+    -fx-panel-bg: #FBFAF7;
+    -fx-panel-bg-darker: #ECEAE4;
+    -fx-pasteboard-bg: #E4E1D9;
+
+    -fx-border-subtle: #D8D5CC;
+
+    -fx-text-primary: #2A2924;
+    -fx-text-secondary: #6F6C63;
+
+    -fx-accent: #2F6FED;
+    -fx-accent-hover: #4C84F0;
+
+    -fx-danger: #C4453D;
+    -fx-warning: #B4791E;
+}

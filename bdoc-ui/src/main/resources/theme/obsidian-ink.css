@@ -1,0 +1,22 @@
+/* ============================================================
+ * Тёмная тема BDoc Editor.
+ * Задаёт только цветовые переменные -fx-*, используемые в base.css.
+ * ============================================================ */
+
+.root {
+    -fx-base-bg: #202124;
+    -fx-panel-bg: #26272B;
+    -fx-panel-bg-darker: #1B1C1F;
+    -fx-pasteboard-bg: #141516;
+
+    -fx-border-subtle: #35363A;
+
+    -fx-text-primary: #E6E6E6;
+    -fx-text-secondary: #9AA0A6;
+
+    -fx-accent: #4C8DFF;
+    -fx-accent-hover: #6BA1FF;
+
+    -fx-danger: #E5484D;
+    -fx-warning: #D9A83C;
+}

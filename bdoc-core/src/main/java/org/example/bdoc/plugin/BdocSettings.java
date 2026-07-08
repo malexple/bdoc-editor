@@ -108,7 +108,7 @@ public final class BdocSettings {
     }
 
     public String loadTheme() {
-        return root.node("appearance").get("theme", "PRIMER_DARK");
+        return root.node("appearance").get("theme", "obsidian-ink");
     }
 
     // ---- Active tool ----
