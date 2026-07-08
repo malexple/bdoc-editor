@@ -38,6 +38,36 @@ The repository is organized into highly decoupled modules:
 
 ---
 
+## 📂 The BDoc Format Specification (v0.1)
+
+The open `.bdoc` format specification is designed as a canonical, framework-agnostic document representation that decouples structural semantics from rendering geometry. It synthesizes core DTP standards (InDesign IDML, Scribus SLA, ODF) with advanced accessibility frameworks (ALTO/PAGE OCR layouts).
+
+### Core Architectural Principles
+* **Layer Separation:** Independent boundaries for Document Semantics (`Stories`), Page Layout (`Pages`), and Rendering Logic (`Graphics`).
+* **Deterministic Behavior:** Fully programmatic and predictable layout schemas; execution of custom inline scripts or active external code is strictly restricted.
+* **Deterministic Accessibility:** Built-in semantic reading order for accessibility, screen readers, and programmatic text reflow.
+
+### Document Block Architecture
+A minimal valid BDoc v0.1 file container separates metadata, logical streams, and geometries into top-level logical blocks:
+
+| Block | Target Domain & Purpose |
+| :--- | :--- |
+| **`Document`** | Root entry point containing structural meta-properties, global versioning, and base localization. |
+| **`Templates`** | Master pages layouts, margin configurations, column guides, and running header/footer rules. |
+| **`Pages`** | Physical print spreads and page matrices mapping boundary metrics to active objects. |
+| **`Layers`** | Composite composition planes (background overlays, vector artwork, annotations, typography). |
+| **`Stories`** | Contiguous, layout-independent textual flows mapped through paragraphs and text spans. |
+| **`Styles`** | Reusable stylistic property registries targeting paragraphs, inline characters, frames, and tables. |
+| **`Graphics`** | Primitive 2D paths, vector transforms, boolean compound shapes, clipping rules, and opacity masks. |
+| **`Assets`** | Centralized binary artifact registries hosting font subsets, embedded rasters, and ICC profiles. |
+| **`ReadingOrder`** | Explicit logical sequencing indices guiding downstream multi-column converters and TTS models. |
+
+### Data Model Blueprints
+* **The Text Engine (`Stories`):** Composed of hierarchical `Story` ➔ `Paragraph` ➔ `Span` structures. Paragraph nodes enforce explicit typographic semantic roles (`title`, `heading`, `body`, `caption`, `footnote`).
+* **The Geometry Engine (`Graphics`):** Implements absolute path constructors including precise bezier curves, transformations matrices, complex clipping paths, and custom compound shapes.
+
+---
+
 ## 🗺 Roadmap & Current Status
 
 The project is moving through a structured development cycle:
